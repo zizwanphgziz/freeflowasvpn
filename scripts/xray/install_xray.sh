@@ -32,9 +32,9 @@ generate_xray_config() {
     local domain
     domain=$(get_domain)
 
-    # Auto-generate UUID — no prompts
+    # Auto-generate UUID — no prompts, strip all control chars
     local uuid
-    uuid=$(generate_uuid)
+    uuid=$(generate_uuid | tr -d '[:cntrl:]' | tr -d '[:space:]')
     echo "${uuid}" > "${CONFIG_DIR}/default_uuid"
 
     # Default paths — all hardcoded, sensible defaults
@@ -78,6 +78,13 @@ EOF
         reality_public="none"
     fi
     reality_short_id=$(openssl rand -hex 4)
+
+    # Sanitize ALL variables — strip control characters that break JSON
+    uuid=$(echo -n "${uuid}" | tr -d '[:cntrl:]')
+    domain=$(echo -n "${domain}" | tr -d '[:cntrl:]')
+    reality_private=$(echo -n "${reality_private}" | tr -d '[:cntrl:]')
+    reality_public=$(echo -n "${reality_public}" | tr -d '[:cntrl:]')
+    reality_short_id=$(echo -n "${reality_short_id}" | tr -d '[:cntrl:]')
 
     mkdir -p "${CONFIG_DIR}"
     echo "${reality_private}" > "${CONFIG_DIR}/reality_private_key"
@@ -310,6 +317,22 @@ User=root
 EOF
 
     systemctl daemon-reload
+
+    # Validate JSON with jq before testing with xray
+    if ! jq empty "${XRAY_CONFIG}" 2>/dev/null; then
+        msg_warn "JSON validation failed — attempting to fix..."
+        # Remove control characters and re-validate
+        local cleaned
+        cleaned=$(sed 's/[[:cntrl:]]//g' "${XRAY_CONFIG}")
+        echo "${cleaned}" | jq '.' > "${XRAY_CONFIG}.tmp" 2>/dev/null
+        if [[ -s "${XRAY_CONFIG}.tmp" ]]; then
+            mv "${XRAY_CONFIG}.tmp" "${XRAY_CONFIG}"
+            msg_ok "JSON fixed"
+        else
+            rm -f "${XRAY_CONFIG}.tmp"
+            msg_fail "Could not fix JSON"
+        fi
+    fi
 
     # Test config before starting
     if xray run -test -config "${XRAY_CONFIG}" &>/dev/null; then

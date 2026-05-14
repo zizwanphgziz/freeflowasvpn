@@ -50,11 +50,23 @@ setup_ssl_certificate() {
         cp "/etc/letsencrypt/live/${domain}/fullchain.pem" /etc/xray/xray.crt
         cp "/etc/letsencrypt/live/${domain}/privkey.pem" /etc/xray/xray.key
         chmod 644 /etc/xray/xray.crt /etc/xray/xray.key
-        msg_ok "SSL certificate obtained"
+        msg_ok "SSL certificate obtained from Let's Encrypt"
     else
-        msg_fail "SSL certificate request failed"
-        msg_info "Check that domain points to this server's IP"
-        return 1
+        msg_warn "Let's Encrypt cert failed — generating self-signed certificate"
+        msg_info "You can renew to Let's Encrypt later via menu (Renew SSL)"
+        mkdir -p /etc/xray
+        openssl req -x509 -nodes -days 3650 \
+            -newkey rsa:2048 \
+            -keyout /etc/xray/xray.key \
+            -out /etc/xray/xray.crt \
+            -subj "/CN=${domain}/O=FreeFlow/C=MY" 2>/dev/null
+        chmod 644 /etc/xray/xray.crt /etc/xray/xray.key
+        if [[ -f /etc/xray/xray.crt ]]; then
+            msg_ok "Self-signed SSL certificate created"
+        else
+            msg_fail "Could not create SSL certificate"
+            return 1
+        fi
     fi
 
     if ! crontab -l 2>/dev/null | grep -q "certbot renew"; then

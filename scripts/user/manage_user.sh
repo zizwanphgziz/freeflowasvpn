@@ -182,11 +182,14 @@ add_protocol_user() {
     read -rp " Custom UUID/name? (leave empty for random): " custom_name
     local uuid
     if [[ -n "${custom_name}" ]]; then
-        uuid=$(custom_uuid_from_name "${custom_name}")
+        uuid=$(custom_uuid_from_name "${custom_name}" | tr -d '[:cntrl:]')
         msg_info "UUID from '${custom_name}': ${uuid}"
     else
-        uuid=$(generate_uuid)
+        uuid=$(generate_uuid | tr -d '[:cntrl:]')
     fi
+    # Sanitize — strip any control chars that break JSON
+    uuid=$(echo -n "${uuid}" | tr -d '[:cntrl:]' | tr -d '[:space:]')
+    username=$(echo -n "${username}" | tr -d '[:cntrl:]')
 
     read -rp " Validity in days (default: 30): " days
     days="${days:-30}"
@@ -210,6 +213,15 @@ DATA_LIMIT_GB=${data_limit}
 STATUS=active
 EOF
 
+    # Clean the xray config before modifying — strip control chars
+    if [[ -f "${XRAY_CONFIG}" ]]; then
+        local clean_json
+        clean_json=$(sed 's/[[:cntrl:]]//g' "${XRAY_CONFIG}" | jq '.' 2>/dev/null)
+        if [[ -n "${clean_json}" ]]; then
+            echo "${clean_json}" > "${XRAY_CONFIG}"
+        fi
+    fi
+
     # Add user to Xray config
     local tmp_config
     tmp_config=$(mktemp)
@@ -223,7 +235,7 @@ EOF
                         .settings.clients += [{"id": $uuid, "flow": "xtls-rprx-vision", "email": $email}]
                     else . end
                 )
-            ' "${XRAY_CONFIG}" > "${tmp_config}"
+            ' "${XRAY_CONFIG}" > "${tmp_config}" 2>/dev/null
             ;;
         vmess)
             jq --arg uuid "${uuid}" --arg email "${username}@freeflow" '
@@ -232,7 +244,7 @@ EOF
                         .settings.clients += [{"id": $uuid, "alterId": 0, "email": $email}]
                     else . end
                 )
-            ' "${XRAY_CONFIG}" > "${tmp_config}"
+            ' "${XRAY_CONFIG}" > "${tmp_config}" 2>/dev/null
             ;;
         trojan)
             jq --arg password "${uuid}" --arg email "${username}@freeflow" '
@@ -241,15 +253,16 @@ EOF
                         .settings.clients += [{"password": $password, "email": $email}]
                     else . end
                 )
-            ' "${XRAY_CONFIG}" > "${tmp_config}"
+            ' "${XRAY_CONFIG}" > "${tmp_config}" 2>/dev/null
             ;;
     esac
 
-    if [[ -s "${tmp_config}" ]]; then
+    if [[ -s "${tmp_config}" ]] && jq empty "${tmp_config}" 2>/dev/null; then
         mv "${tmp_config}" "${XRAY_CONFIG}"
     else
         rm -f "${tmp_config}"
-        msg_fail "Could not add user to Xray config"
+        msg_fail "Could not add user to Xray config (JSON error)"
+        msg_info "Try restarting xray and running the command again"
         return 1
     fi
 
@@ -380,7 +393,16 @@ reactivate_protocol_user() {
     expiry=$(get_expiry_date "${days}")
 
     local uuid
-    uuid=$(grep "^UUID=" "${USER_DB}/${protocol}/expired/${username}" | cut -d= -f2)
+    uuid=$(grep "^UUID=" "${USER_DB}/${protocol}/expired/${username}" | cut -d= -f2 | tr -d '[:cntrl:]' | tr -d '[:space:]')
+
+    # Clean xray config before modifying
+    if [[ -f "${XRAY_CONFIG}" ]]; then
+        local clean_json
+        clean_json=$(sed 's/[[:cntrl:]]//g' "${XRAY_CONFIG}" | jq '.' 2>/dev/null)
+        if [[ -n "${clean_json}" ]]; then
+            echo "${clean_json}" > "${XRAY_CONFIG}"
+        fi
+    fi
 
     sed -i "s/^EXPIRY=.*/EXPIRY=${expiry}/" "${USER_DB}/${protocol}/expired/${username}"
     sed -i 's/^STATUS=expired/STATUS=active/' "${USER_DB}/${protocol}/expired/${username}"
@@ -546,7 +568,7 @@ create_trial_account() {
 
     local trial_name="trial_$(date +%s | tail -c 7)"
     local uuid
-    uuid=$(generate_uuid)
+    uuid=$(generate_uuid | tr -d '[:cntrl:]' | tr -d '[:space:]')
     local minutes=$((hours * 60))
     local expiry
     expiry=$(date -d "+${minutes} minutes" +"%Y-%m-%d")

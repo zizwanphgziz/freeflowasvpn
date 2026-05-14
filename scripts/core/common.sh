@@ -137,7 +137,7 @@ check_arch() {
 
 # --- UUID Functions ---
 generate_uuid() {
-    cat /proc/sys/kernel/random/uuid
+    cat /proc/sys/kernel/random/uuid 2>/dev/null | tr -d '[:cntrl:]' || uuidgen 2>/dev/null || openssl rand -hex 16 | sed 's/^\(.\{8\}\)\(.\{4\}\)\(.\{4\}\)\(.\{4\}\)\(.\{12\}\)/\1-\2-\3-\4-\5/'
 }
 
 custom_uuid_from_name() {
