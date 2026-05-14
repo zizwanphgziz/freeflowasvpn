@@ -1,7 +1,8 @@
 #!/bin/bash
 # ============================================================
 # FreeFlow ASVPN - Nginx Reverse Proxy Setup
-# Supports all protocol routes: VLESS, VMESS, Trojan (WS/gRPC)
+# Protocols: VLESS, VMESS, Trojan (WS/gRPC/HttpUpgrade/XHTTP)
+# Port 443 is reserved for Xray XTLS Reality (direct)
 # ============================================================
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -10,13 +11,12 @@ source "${SCRIPT_DIR}/../core/common.sh"
 install_nginx() {
     print_section "Installing Nginx"
 
-    # Stop Apache if running (common conflict)
     systemctl stop apache2 2>/dev/null
     systemctl disable apache2 2>/dev/null
 
-    apt-get install -y nginx
+    apt-get install -y nginx > /dev/null 2>&1
     if command -v nginx &>/dev/null; then
-        msg_ok "Nginx installed: $(nginx -v 2>&1)"
+        msg_ok "Nginx installed"
     else
         msg_fail "Nginx installation failed"
         return 1
@@ -30,39 +30,35 @@ setup_ssl_certificate() {
     domain=$(get_domain)
 
     if [[ -z "${domain}" ]]; then
-        msg_fail "No domain configured. Run setup first."
+        msg_fail "No domain configured"
         return 1
     fi
 
     msg_info "Obtaining SSL certificate for ${domain}..."
 
-    # Stop services using port 80 temporarily
     systemctl stop nginx 2>/dev/null
 
-    # Request certificate
     certbot certonly --standalone \
         --preferred-challenges http \
         --agree-tos \
         --email "admin@${domain}" \
         -d "${domain}" \
-        --non-interactive
+        --non-interactive 2>&1 | tail -3
 
     if [[ -f "/etc/letsencrypt/live/${domain}/fullchain.pem" ]]; then
-        # Copy certs to xray directory
+        mkdir -p /etc/xray
         cp "/etc/letsencrypt/live/${domain}/fullchain.pem" /etc/xray/xray.crt
         cp "/etc/letsencrypt/live/${domain}/privkey.pem" /etc/xray/xray.key
-        chmod 644 /etc/xray/xray.crt
-        chmod 644 /etc/xray/xray.key
-        msg_ok "SSL certificate obtained for ${domain}"
+        chmod 644 /etc/xray/xray.crt /etc/xray/xray.key
+        msg_ok "SSL certificate obtained"
     else
         msg_fail "SSL certificate request failed"
-        msg_info "Check that your domain points to this server's IP"
+        msg_info "Check that domain points to this server's IP"
         return 1
     fi
 
-    # Setup auto-renewal cron
     if ! crontab -l 2>/dev/null | grep -q "certbot renew"; then
-        (crontab -l 2>/dev/null; echo "0 3 * * * certbot renew --quiet --deploy-hook 'systemctl reload nginx' && cp /etc/letsencrypt/live/${domain}/fullchain.pem /etc/xray/xray.crt && cp /etc/letsencrypt/live/${domain}/privkey.pem /etc/xray/xray.key") | crontab -
+        (crontab -l 2>/dev/null; echo "0 3 * * * certbot renew --quiet --deploy-hook 'cp /etc/letsencrypt/live/${domain}/fullchain.pem /etc/xray/xray.crt && cp /etc/letsencrypt/live/${domain}/privkey.pem /etc/xray/xray.key && systemctl reload nginx'") | crontab -
         msg_ok "SSL auto-renewal configured"
     fi
 }
@@ -73,27 +69,26 @@ generate_nginx_config() {
     local domain
     domain=$(get_domain)
 
-    # Load paths (defaults)
-    local vless_ws_path="/"
-    local vless_hu_path="/vless-hu"
+    # Load paths
+    local vless_ws_path="/vless-ws"
+    local vless_hu_path="/vless-hup"
     local vless_xhttp_path="/vless-xhttp"
     local vless_grpc_sn="vless-grpc"
     local vmess_ws_path="/vmess-ws"
     local vmess_grpc_sn="vmess-grpc"
     local trojan_ws_path="/trojan-ws"
     local trojan_grpc_sn="trojan-grpc"
-    local ssh_ws_path="/ssh"
 
     if [[ -f "${CONFIG_DIR}/paths.conf" ]]; then
         source "${CONFIG_DIR}/paths.conf"
     fi
 
-    # Check if SSH WS is installed
+    # SSH WS block (only if installed)
     local ssh_ws_block=""
     if [[ -f "${CONFIG_DIR}/modules/ssh_ws_installed" ]]; then
         ssh_ws_block="
     # --- SSH WebSocket ---
-    location ${ssh_ws_path} {
+    location /ssh {
         if (\$http_upgrade != \"Websocket\") {
             return 404;
         }
@@ -108,7 +103,7 @@ generate_nginx_config() {
     }"
     fi
 
-    # Generate main nginx config
+    # Main nginx config
     cat > /etc/nginx/nginx.conf <<'NGINXMAIN'
 user www-data;
 worker_processes auto;
@@ -144,14 +139,14 @@ http {
 }
 NGINXMAIN
 
-    # Generate site config with multiport and all protocols
+    # Site config — Port 443 NOT included (used by Xray Reality)
     cat > "${NGINX_CONF}" <<NGINXEOF
 # ============================================
-# FreeFlow ASVPN — Nginx Reverse Proxy Config
-# Protocols: VLESS, VMESS, Trojan (WS + gRPC)
+# FreeFlow ASVPN — Nginx Reverse Proxy
+# Port 443: Xray XTLS Reality (direct)
 # ============================================
 
-# --- Non-TLS Ports (HTTP) ---
+# --- Non-TLS Ports ---
 server {
     listen 80;
     listen [::]:80;
@@ -164,7 +159,7 @@ server {
 
     server_name ${domain};
 
-    # --- VLESS WebSocket (Non-TLS) ---
+    # VLESS WebSocket (Non-TLS)
     location ${vless_ws_path} {
         if (\$http_upgrade != "Websocket") {
             rewrite /(.*) / break;
@@ -179,11 +174,8 @@ server {
         proxy_set_header Host \$http_host;
     }
 
-    # --- VLESS HttpUpgrade (Non-TLS) ---
+    # VLESS HttpUpgrade (Non-TLS)
     location ${vless_hu_path} {
-        if (\$http_upgrade != "Websocket") {
-            return 404;
-        }
         proxy_redirect off;
         proxy_pass http://127.0.0.1:10002;
         proxy_http_version 1.1;
@@ -194,7 +186,7 @@ server {
         proxy_set_header Host \$http_host;
     }
 
-    # --- VLESS XHTTP (Non-TLS) ---
+    # VLESS XHTTP (Non-TLS)
     location ${vless_xhttp_path} {
         proxy_redirect off;
         proxy_pass http://127.0.0.1:10003;
@@ -204,13 +196,13 @@ server {
         proxy_set_header Host \$http_host;
     }
 
-    # --- VLESS gRPC (Non-TLS) ---
+    # VLESS gRPC (Non-TLS)
     location /${vless_grpc_sn} {
         grpc_pass grpc://127.0.0.1:10004;
         grpc_set_header X-Real-IP \$remote_addr;
     }
 
-    # --- VMESS WebSocket (Non-TLS) ---
+    # VMESS WebSocket (Non-TLS)
     location ${vmess_ws_path} {
         if (\$http_upgrade != "Websocket") {
             return 404;
@@ -225,13 +217,13 @@ server {
         proxy_set_header Host \$http_host;
     }
 
-    # --- VMESS gRPC (Non-TLS) ---
+    # VMESS gRPC (Non-TLS)
     location /${vmess_grpc_sn} {
         grpc_pass grpc://127.0.0.1:10006;
         grpc_set_header X-Real-IP \$remote_addr;
     }
 
-    # --- Trojan WebSocket (Non-TLS) ---
+    # Trojan WebSocket (Non-TLS)
     location ${trojan_ws_path} {
         if (\$http_upgrade != "Websocket") {
             return 404;
@@ -246,21 +238,21 @@ server {
         proxy_set_header Host \$http_host;
     }
 
-    # --- Trojan gRPC (Non-TLS) ---
+    # Trojan gRPC (Non-TLS)
     location /${trojan_grpc_sn} {
         grpc_pass grpc://127.0.0.1:10008;
         grpc_set_header X-Real-IP \$remote_addr;
     }
 ${ssh_ws_block}
 
-    # --- Default: Decoy Page ---
+    # Default
     location / {
         root /var/www/html;
         index index.html;
     }
 }
 
-# --- TLS Ports (HTTPS) ---
+# --- TLS Ports (NOT 443 — that's Xray Reality) ---
 server {
     listen 8443 ssl;
     listen [::]:8443 ssl;
@@ -277,7 +269,7 @@ server {
     ssl_ciphers EECDH+CHACHA20:EECDH+ECDSA+AES128:EECDH+aRSA+AES128:RSA+AES128:EECDH+ECDSA+AES256:EECDH+aRSA+AES256:RSA+AES256:!MD5;
     ssl_protocols TLSv1.2 TLSv1.3;
 
-    # --- VLESS WebSocket (TLS) ---
+    # VLESS WebSocket (TLS)
     location ${vless_ws_path} {
         if (\$http_upgrade != "Websocket") {
             rewrite /(.*) / break;
@@ -292,11 +284,8 @@ server {
         proxy_set_header Host \$http_host;
     }
 
-    # --- VLESS HttpUpgrade (TLS) ---
+    # VLESS HttpUpgrade (TLS)
     location ${vless_hu_path} {
-        if (\$http_upgrade != "Websocket") {
-            return 404;
-        }
         proxy_redirect off;
         proxy_pass http://127.0.0.1:10002;
         proxy_http_version 1.1;
@@ -307,7 +296,7 @@ server {
         proxy_set_header Host \$http_host;
     }
 
-    # --- VLESS XHTTP (TLS) ---
+    # VLESS XHTTP (TLS)
     location ${vless_xhttp_path} {
         proxy_redirect off;
         proxy_pass http://127.0.0.1:10003;
@@ -317,13 +306,13 @@ server {
         proxy_set_header Host \$http_host;
     }
 
-    # --- VLESS gRPC (TLS) ---
+    # VLESS gRPC (TLS)
     location /${vless_grpc_sn} {
         grpc_pass grpc://127.0.0.1:10004;
         grpc_set_header X-Real-IP \$remote_addr;
     }
 
-    # --- VMESS WebSocket (TLS) ---
+    # VMESS WebSocket (TLS)
     location ${vmess_ws_path} {
         if (\$http_upgrade != "Websocket") {
             return 404;
@@ -338,13 +327,13 @@ server {
         proxy_set_header Host \$http_host;
     }
 
-    # --- VMESS gRPC (TLS) ---
+    # VMESS gRPC (TLS)
     location /${vmess_grpc_sn} {
         grpc_pass grpc://127.0.0.1:10006;
         grpc_set_header X-Real-IP \$remote_addr;
     }
 
-    # --- Trojan WebSocket (TLS) ---
+    # Trojan WebSocket (TLS)
     location ${trojan_ws_path} {
         if (\$http_upgrade != "Websocket") {
             return 404;
@@ -359,14 +348,14 @@ server {
         proxy_set_header Host \$http_host;
     }
 
-    # --- Trojan gRPC (TLS) ---
+    # Trojan gRPC (TLS)
     location /${trojan_grpc_sn} {
         grpc_pass grpc://127.0.0.1:10008;
         grpc_set_header X-Real-IP \$remote_addr;
     }
 ${ssh_ws_block}
 
-    # --- Default: Decoy Page ---
+    # Default
     location / {
         root /var/www/html;
         index index.html;
@@ -374,10 +363,8 @@ ${ssh_ws_block}
 }
 NGINXEOF
 
-    # Remove default site config if exists
     rm -f /etc/nginx/sites-enabled/default 2>/dev/null
 
-    # Test nginx config
     if nginx -t 2>/dev/null; then
         msg_ok "Nginx configuration valid"
         restart_service nginx
@@ -410,7 +397,6 @@ install_nginx_full() {
     generate_nginx_config
 }
 
-# Run if called directly
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
     check_root
     install_nginx_full

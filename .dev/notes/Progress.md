@@ -101,13 +101,21 @@
 | 10006 | VMESS | gRPC |
 | 10007 | Trojan | WebSocket |
 | 10008 | Trojan | gRPC |
-| 10009 | VLESS Reality | TCP XTLS (direct, not via Nginx) |
+| 443   | VLESS Reality | TCP XTLS (direct, port 443, NOT via Nginx) |
 | 10010 | Trojan TCP | TLS (via Reality fallback) |
 | 10085 | API | Stats query |
 
-## Phase 9: Quality & Testing — IN PROGRESS
+## Phase 9: v2.1 — Critical UX Fix (JinGGo Model) — DONE
+- [x] **setup.sh rewrite** — ONLY asks for domain, everything else auto-installs
+- [x] **install_xray.sh rewrite** — No prompts, auto UUID + paths + Reality keys, config validation
+- [x] **install_nginx.sh fix** — Port 443 removed (reserved for Xray Reality), TLS on 8443/2083/2087
+- [x] **menu.sh redesign** — JinGGo-style with server info header, VPN MENU + SYSTEM MENU, sub-menus
+- [x] **manage_user.sh rewrite** — Config output shows JinGGo-style blocks with share links
+- [x] Chat.md and Progress.md updated
+
+## Phase 10: Quality & Testing — IN PROGRESS
 - [x] shellcheck validation (0 errors)
-- [ ] Live VPS testing
+- [ ] Live VPS testing (Ahmad to test on fresh Debian 13 / Ubuntu 26.04)
 - [ ] Stress testing multiport connections
 
 ## Changelog
@@ -119,3 +127,6 @@
 | 2026-05-14 | v2.0: Added VMESS, Trojan, gRPC, XTLS Reality + 14 new features |
 | 2026-05-14 | v2.0: Menu expanded to 46 options, Telegram bot updated |
 | 2026-05-14 | v2.0: OS support extended to Debian 13 and Ubuntu 26.04 |
+| 2026-05-14 | v2.1: Critical UX fix — domain-only setup, JinGGo-style menu + config output |
+| 2026-05-14 | v2.1: Port 443 exclusively for Xray Reality, Nginx on 8443/2083/2087 |
+| 2026-05-14 | v2.1: Share links generated for all protocols (vless://, vmess://, trojan://) |

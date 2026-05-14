@@ -116,3 +116,38 @@ Internet → Nginx (80, 443, 8080, 8443, 8880, 2083, 2086, 2087)
 - Telegram bot updated for all protocols + new tools
 - Version bumped from 1.0.0 to 2.0.0
 - All scripts pass shellcheck (0 errors)
+
+## Session 4 — v2.1 Critical UX Fix
+
+### Ahmad's Feedback (v2.0 Test)
+- Installed v2.0 on fresh VPS
+- **PROBLEM 1**: Installation asked too many interactive questions (SSH WS, WARP, Ads blocker, Telegram bot, auto-update, auto-reboot, auto-clear-log)
+- **PROBLEM 2**: Xray config failed — `[FAIL] xray failed to restart`
+- **PROBLEM 3**: Output format doesn't match JinGGo-style config blocks
+
+### Ahmad's VERBATIM Instruction
+> "The only thing that I need to key in is the 1st one which is the domain... That's all...
+> The others are all the functions inside the script... It should be in the script already...
+> No need to prompt user questions or anything while installation except the domain..."
+
+### What Was Expected (JinGGo Model)
+1. Run setup.sh → ask ONLY for domain
+2. Auto-install everything silently (Xray, Nginx, SSH WS, WARP, ads blocker, etc.)
+3. Auto-setup all crons (auto-update, auto-reboot, auto-clear-log)
+4. Reboot → type `menu` → everything ready
+5. User creation shows formatted config with share links (vless://, vmess://, trojan://)
+
+### Fixes Applied (v2.1)
+1. **setup.sh** — Complete rewrite: ONLY asks for domain, everything auto-installs
+2. **install_xray.sh** — Removed all prompts, auto-generates UUID + paths + Reality keys, validates config before restart
+3. **install_nginx.sh** — Port 443 removed (reserved for Xray Reality), uses 8443/2083/2087 for TLS
+4. **menu.sh** — Redesigned JinGGo-style: server info header, VPN MENU + SYSTEM MENU sections, sub-menus per protocol
+5. **manage_user.sh** — Config output now shows JinGGo-style formatted blocks with all share links (vless://, vmess://, trojan://)
+
+### Port Allocation (Final)
+- 443: Xray XTLS Reality (direct TCP, NOT behind Nginx)
+- 80, 8080, 8880, 2086: Nginx non-TLS
+- 8443, 2083, 2087: Nginx TLS
+- 10001-10008: Xray internal (behind Nginx)
+- 10010: Trojan TCP (Reality fallback)
+- 10085: Xray Stats API
