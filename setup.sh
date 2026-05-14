@@ -11,7 +11,7 @@
 REPO_OWNER="zizwanphgziz"
 REPO_NAME="freeflowasvpn"
 REPO_URL="https://github.com/${REPO_OWNER}/${REPO_NAME}"
-REPO_BRANCH="init-branch"
+REPO_BRANCH="devin/1778775736-v2.1-ux-fix"
 INSTALL_DIR="/usr/local/lib/freeflow"
 VERSION="2.1.0"
 
