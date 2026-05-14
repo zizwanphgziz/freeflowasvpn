@@ -113,12 +113,23 @@ apt-get install -y wget curl tar > /dev/null 2>&1
 mkdir -p "${INSTALL_DIR}"
 cd /tmp || exit 1
 
+# GitHub replaces / with - in archive directory names
+REPO_DIR="${REPO_NAME}-$(echo "${REPO_BRANCH}" | tr '/' '-')"
+
 if wget -q "${REPO_URL}/archive/refs/heads/${REPO_BRANCH}.tar.gz" -O freeflow.tar.gz; then
     tar xzf freeflow.tar.gz
+    if [[ ! -d "${REPO_DIR}" ]]; then
+        # Try to find the extracted directory
+        REPO_DIR=$(ls -d ${REPO_NAME}-* 2>/dev/null | head -1)
+        if [[ -z "${REPO_DIR}" ]]; then
+            echo -e " ${RED}[FAIL]${NC} Could not find extracted archive"
+            exit 1
+        fi
+    fi
     mkdir -p "${INSTALL_DIR}/scripts"
-    cp -rf "${REPO_NAME}-${REPO_BRANCH}/scripts/"* "${INSTALL_DIR}/scripts/"
-    cp -f "${REPO_NAME}-${REPO_BRANCH}/setup.sh" "${INSTALL_DIR}/setup.sh" 2>/dev/null
-    rm -rf "${REPO_NAME}-${REPO_BRANCH}" freeflow.tar.gz
+    cp -rf "${REPO_DIR}/scripts/"* "${INSTALL_DIR}/scripts/"
+    cp -f "${REPO_DIR}/setup.sh" "${INSTALL_DIR}/setup.sh" 2>/dev/null
+    rm -rf "${REPO_DIR}" freeflow.tar.gz
     echo -e " ${GREEN}[OK]${NC} Scripts downloaded"
 else
     echo -e " ${RED}[FAIL]${NC} Download failed"
@@ -128,6 +139,10 @@ fi
 find "${INSTALL_DIR}/scripts" -name "*.sh" -exec chmod +x {} \;
 
 # Source common functions
+if [[ ! -f "${INSTALL_DIR}/scripts/core/common.sh" ]]; then
+    echo -e " ${RED}[FAIL]${NC} Scripts not found — download may have failed"
+    exit 1
+fi
 source "${INSTALL_DIR}/scripts/core/common.sh"
 
 # --- Setup Directories ---
