@@ -151,3 +151,38 @@ Internet → Nginx (80, 443, 8080, 8443, 8880, 2083, 2086, 2087)
 - 10001-10008: Xray internal (behind Nginx)
 - 10010: Trojan TCP (Reality fallback)
 - 10085: Xray Stats API
+
+## Session 5 — v2.2 Critical Bug Fixes
+
+### Ahmad's Report (v2.1 Live Test)
+- Installed v2.1 on fresh VPS (Debian 13, IP: 103.200.219.100, domain: madvpn.us.kg)
+- Created VLESS user — config generated correctly with all share links
+- **PROBLEM**: VLESS configs generate but connections DON'T WORK
+- Installation completes suspiciously fast (minutes vs expected 10-15 min)
+- Suspected: incomplete installation, services silently failing
+
+### Root Cause Analysis
+
+**7 Critical Issues Found:**
+
+1. **VERSION variable overwritten** — `setup.sh` sources `/etc/os-release` which sets `VERSION="13 (trixie)"`, overwriting the script's `VERSION="2.1.0"`. Menu shows wrong version. Same issue in `common.sh`'s `detect_os()`.
+
+2. **No firewall configuration** — No iptables/ufw rules to open ports 80, 443, 8080, 8443, 8880, 2083, 2086, 2087. Every reference VPN script (JinGGo, Decode, Darul Itqan, Rerechan, etc.) explicitly configures firewall rules. This is the **primary reason connections fail** on VPS with default firewall.
+
+3. **Services not enabled on boot** — `systemctl enable` never called for xray or nginx. Services restart during install but won't survive VPS reboot.
+
+4. **SSH WS not auto-installed** — `setup.sh` doesn't call `install_ssh_ws()`. Per Ahmad's "no prompts, everything auto-installs" requirement.
+
+5. **Ads Blocker not auto-installed** — Same issue, should install silently during setup.
+
+6. **Nginx `http2 on;` directive incompatible** — Only works on nginx >= 1.25.1. Debian 12 ships nginx 1.22.x, causing config test failure and nginx refusing to start.
+
+7. **Auto-update broken for `/` branch names** — `auto_update.sh` doesn't translate `/` to `-` in extracted directory name, causing update to fail silently.
+
+### Fixes Applied (v2.2)
+1. Renamed `VERSION` to `FF_VERSION` in setup.sh; `detect_os()` now uses subshell to avoid clobbering variables
+2. Added `setup_firewall()` to `dependencies.sh` — opens all VPN ports via iptables + ufw
+3. Added `systemctl enable` for xray and nginx during installation
+4. Auto-install SSH WS and Ads Blocker during setup
+5. Nginx http2 directive now auto-detects nginx version for compatibility
+6. Auto-update branch name sanitization fixed

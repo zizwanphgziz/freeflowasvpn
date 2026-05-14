@@ -16,7 +16,8 @@ install_nginx() {
 
     apt-get install -y nginx > /dev/null 2>&1
     if command -v nginx &>/dev/null; then
-        msg_ok "Nginx installed"
+        systemctl enable nginx 2>/dev/null
+        msg_ok "Nginx installed and enabled"
     else
         msg_fail "Nginx installation failed"
         return 1
@@ -151,6 +152,19 @@ http {
 }
 NGINXMAIN
 
+    # Detect nginx version for http2 directive compatibility
+    local nginx_ver http2_directive listen_ssl_h2
+    nginx_ver=$(nginx -v 2>&1 | grep -oP '[\d.]+' | head -1)
+    if [[ "$(echo -e "${nginx_ver}\n1.25.1" | sort -V | head -1)" == "1.25.1" ]]; then
+        # nginx >= 1.25.1 — use separate http2 directive
+        http2_directive="    http2 on;"
+        listen_ssl_h2="ssl"
+    else
+        # nginx < 1.25.1 — use http2 in listen directive
+        http2_directive=""
+        listen_ssl_h2="ssl http2"
+    fi
+
     # Site config — Port 443 NOT included (used by Xray Reality)
     cat > "${NGINX_CONF}" <<NGINXEOF
 # ============================================
@@ -266,13 +280,13 @@ ${ssh_ws_block}
 
 # --- TLS Ports (NOT 443 — that's Xray Reality) ---
 server {
-    listen 8443 ssl;
-    listen [::]:8443 ssl;
-    listen 2083 ssl;
-    listen [::]:2083 ssl;
-    listen 2087 ssl;
-    listen [::]:2087 ssl;
-    http2 on;
+    listen 8443 ${listen_ssl_h2};
+    listen [::]:8443 ${listen_ssl_h2};
+    listen 2083 ${listen_ssl_h2};
+    listen [::]:2083 ${listen_ssl_h2};
+    listen 2087 ${listen_ssl_h2};
+    listen [::]:2087 ${listen_ssl_h2};
+${http2_directive}
 
     server_name ${domain};
 

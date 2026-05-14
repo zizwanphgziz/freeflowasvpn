@@ -113,7 +113,16 @@
 - [x] **manage_user.sh rewrite** — Config output shows JinGGo-style blocks with share links
 - [x] Chat.md and Progress.md updated
 
-## Phase 10: Quality & Testing — IN PROGRESS
+## Phase 10: v2.2 — Critical Bug Fixes (Connection Failures) — DONE
+- [x] **Bug: VERSION variable overwritten by `/etc/os-release`** — Renamed to `FF_VERSION`, `detect_os()` now uses subshell
+- [x] **Bug: No firewall rules** — Added `setup_firewall()` to open all VPN ports (iptables + ufw)
+- [x] **Bug: Services not enabled on boot** — Added `systemctl enable` for xray and nginx
+- [x] **Bug: SSH WS not auto-installed** — Added to setup.sh auto-install flow
+- [x] **Bug: Ads Blocker not auto-installed** — Added to setup.sh auto-install flow
+- [x] **Bug: Nginx http2 directive incompatible** — Auto-detects nginx version for `http2 on;` vs `listen ssl http2;`
+- [x] **Bug: Auto-update broken for branch names with `/`** — Added branch name sanitization
+
+## Phase 11: Quality & Testing — IN PROGRESS
 - [x] shellcheck validation (0 errors)
 - [ ] Live VPS testing (Ahmad to test on fresh Debian 13 / Ubuntu 26.04)
 - [ ] Stress testing multiport connections
@@ -130,3 +139,5 @@
 | 2026-05-14 | v2.1: Critical UX fix — domain-only setup, JinGGo-style menu + config output |
 | 2026-05-14 | v2.1: Port 443 exclusively for Xray Reality, Nginx on 8443/2083/2087 |
 | 2026-05-14 | v2.1: Share links generated for all protocols (vless://, vmess://, trojan://) |
+| 2026-05-14 | v2.2: Fixed 7 critical bugs causing connection failures on real VPS |
+| 2026-05-14 | v2.2: Firewall setup, service enable, http2 compat, auto-install SSH WS + Ads |
