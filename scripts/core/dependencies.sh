@@ -9,6 +9,7 @@ source "${SCRIPT_DIR}/common.sh"
 install_base_packages() {
     print_section "Installing Base Packages"
 
+    export DEBIAN_FRONTEND=noninteractive
     apt-get update -y
     apt-get install -y \
         wget curl openssl sudo coreutils gnupg bc \
@@ -139,6 +140,10 @@ EOF
 
 setup_firewall() {
     print_section "Configuring Firewall"
+
+    # Pre-seed iptables-persistent to avoid interactive prompts
+    echo iptables-persistent iptables-persistent/autosave_v4 boolean true | debconf-set-selections 2>/dev/null
+    echo iptables-persistent iptables-persistent/autosave_v6 boolean true | debconf-set-selections 2>/dev/null
 
     # Install iptables if not present
     apt-get install -y iptables iptables-persistent > /dev/null 2>&1

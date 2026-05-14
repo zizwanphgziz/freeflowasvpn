@@ -8,6 +8,8 @@
 # Protocols: VLESS, VMESS, Trojan (WS/gRPC/XTLS Reality)
 # ============================================================
 
+export DEBIAN_FRONTEND=noninteractive
+
 REPO_OWNER="zizwanphgziz"
 REPO_NAME="freeflowasvpn"
 REPO_URL="https://github.com/${REPO_OWNER}/${REPO_NAME}"
