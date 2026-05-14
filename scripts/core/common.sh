@@ -6,8 +6,9 @@
 # --- Repository Info ---
 REPO_OWNER="zizwanphgziz"
 REPO_NAME="freeflowasvpn"
+REPO_BRANCH="init-branch"
 REPO_URL="https://github.com/${REPO_OWNER}/${REPO_NAME}"
-REPO_RAW="https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/main"
+REPO_RAW="https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/${REPO_BRANCH}"
 VERSION_FILE="/etc/freeflow/version"
 CONFIG_DIR="/etc/freeflow"
 DATA_DIR="/etc/freeflow/data"

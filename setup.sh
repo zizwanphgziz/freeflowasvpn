@@ -12,7 +12,8 @@ set -e
 REPO_OWNER="zizwanphgziz"
 REPO_NAME="freeflowasvpn"
 REPO_URL="https://github.com/${REPO_OWNER}/${REPO_NAME}"
-REPO_RAW="https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/main"
+REPO_BRANCH="init-branch"
+REPO_RAW="https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/${REPO_BRANCH}"
 INSTALL_DIR="/usr/local/lib/freeflow"
 VERSION="1.0.0"
 
@@ -101,14 +102,14 @@ apt-get install -y wget curl tar > /dev/null 2>&1
 mkdir -p "${INSTALL_DIR}"
 cd /tmp
 
-if wget -q "${REPO_URL}/archive/refs/heads/main.tar.gz" -O freeflow.tar.gz; then
+if wget -q "${REPO_URL}/archive/refs/heads/${REPO_BRANCH}.tar.gz" -O freeflow.tar.gz; then
     tar xzf freeflow.tar.gz
-    cp -rf "${REPO_NAME}-main/scripts/"* "${INSTALL_DIR}/scripts/" 2>/dev/null || {
+    cp -rf "${REPO_NAME}-${REPO_BRANCH}/scripts/"* "${INSTALL_DIR}/scripts/" 2>/dev/null || {
         mkdir -p "${INSTALL_DIR}/scripts"
-        cp -rf "${REPO_NAME}-main/scripts/"* "${INSTALL_DIR}/scripts/"
+        cp -rf "${REPO_NAME}-${REPO_BRANCH}/scripts/"* "${INSTALL_DIR}/scripts/"
     }
-    cp -f "${REPO_NAME}-main/setup.sh" "${INSTALL_DIR}/setup.sh" 2>/dev/null
-    rm -rf "${REPO_NAME}-main" freeflow.tar.gz
+    cp -f "${REPO_NAME}-${REPO_BRANCH}/setup.sh" "${INSTALL_DIR}/setup.sh" 2>/dev/null
+    rm -rf "${REPO_NAME}-${REPO_BRANCH}" freeflow.tar.gz
     echo -e " ${GREEN}[OK]${NC} Scripts downloaded"
 else
     echo -e " ${RED}[FAIL]${NC} Download failed. Check internet connection."

@@ -51,7 +51,7 @@ do_update() {
     tmp_dir=$(mktemp -d)
 
     # Download the latest release
-    if ! wget -q "${REPO_URL}/archive/refs/heads/main.tar.gz" -O "${tmp_dir}/update.tar.gz"; then
+    if ! wget -q "${REPO_URL}/archive/refs/heads/${REPO_BRANCH}.tar.gz" -O "${tmp_dir}/update.tar.gz"; then
         msg_fail "Download failed"
         rm -rf "${tmp_dir}"
         return 1
@@ -60,7 +60,7 @@ do_update() {
     # Extract
     cd "${tmp_dir}" || return 1
     tar xzf update.tar.gz
-    local extract_dir="${tmp_dir}/${REPO_NAME}-main"
+    local extract_dir="${tmp_dir}/${REPO_NAME}-${REPO_BRANCH}"
 
     if [[ ! -d "${extract_dir}" ]]; then
         msg_fail "Extraction failed"

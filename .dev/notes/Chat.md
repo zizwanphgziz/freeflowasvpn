@@ -41,3 +41,24 @@ Internet → Nginx (80, 443, 8080, 8443, 8880, 2083, 2086, 2087)
               ├── /telegram     → Telegram Bot webhook
               └── /             → Decoy website / panel
 ```
+
+### Build Progress (Session 1 continued)
+- Phase 1 (Foundation): common.sh, dependencies.sh — OS detection, colors, UUID, BBR, swap, DNS
+- Phase 2 (Core VPN): install_xray.sh, install_nginx.sh — Xray config gen + Nginx reverse proxy
+- Phase 3 (Modules): install_ssh_ws.sh (Python WS proxy), install_warp.sh (warp-cli + WireGuard fallback)
+- Phase 4 (Users): manage_user.sh — create/delete/renew/expire/reactivate, custom UUID
+- Phase 5 (Tracking): usage_tracker.sh — per-user data via Xray Stats API
+- Phase 6 (Menu): menu.sh — 26 options, color-coded, service status display
+- Phase 7 (Update): auto_update.sh — GitHub-based auto-update + manual
+- Phase 8 (Telegram): setup_bot.sh — full menu mirror via Telegram bot
+- setup.sh — Main installer entry point with interactive flow
+
+### Session 2 — 2026-05-14
+- PR #1 merged into init-branch
+- Ahmad requested install script for fresh VPS testing
+- Install command provided:
+  ```
+  apt update && apt install wget -y && wget -qO setup.sh https://raw.githubusercontent.com/zizwanphgziz/freeflowasvpn/init-branch/setup.sh && chmod +x setup.sh && ./setup.sh
+  ```
+- All 16 files, 3,525 lines of code deployed
+- shellcheck: 0 errors on all scripts
