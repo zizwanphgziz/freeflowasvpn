@@ -1,6 +1,7 @@
 #!/bin/bash
 # ============================================================
 # FreeFlow ASVPN - Telegram Bot Setup
+# Supports all protocols: VLESS, VMESS, Trojan
 # ============================================================
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -102,7 +103,6 @@ logger = logging.getLogger(__name__)
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
 CHAT_ID = os.environ.get("CHAT_ID", "")
 
-# Conversation states
 WAITING_USERNAME, WAITING_UUID, WAITING_DAYS, WAITING_DOMAIN = range(4)
 
 def authorized(func):
@@ -129,7 +129,7 @@ def run_cmd(cmd):
 @authorized
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "FreeFlow ASVPN Bot\n\n"
+        "FreeFlow ASVPN Bot v2.0\n\n"
         "Use /menu to see all options\n"
         "Use /status to check services"
     )
@@ -137,38 +137,24 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 @authorized
 async def cmd_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
-        [
-            InlineKeyboardButton("Add VLESS User", callback_data="add_user"),
-            InlineKeyboardButton("List Users", callback_data="list_users"),
-        ],
-        [
-            InlineKeyboardButton("Active Users", callback_data="list_active"),
-            InlineKeyboardButton("Expired Users", callback_data="list_expired"),
-        ],
-        [
-            InlineKeyboardButton("Delete User", callback_data="del_user"),
-            InlineKeyboardButton("Renew User", callback_data="renew_user"),
-        ],
-        [
-            InlineKeyboardButton("Reactivate User", callback_data="reactivate_user"),
-            InlineKeyboardButton("User Usage", callback_data="usage"),
-        ],
-        [
-            InlineKeyboardButton("Service Status", callback_data="status"),
-            InlineKeyboardButton("Restart Services", callback_data="restart"),
-        ],
-        [
-            InlineKeyboardButton("Server Info", callback_data="sysinfo"),
-            InlineKeyboardButton("Bandwidth", callback_data="bandwidth"),
-        ],
-        [
-            InlineKeyboardButton("Speedtest", callback_data="speedtest"),
-            InlineKeyboardButton("Check Update", callback_data="check_update"),
-        ],
-        [
-            InlineKeyboardButton("WARP Status", callback_data="warp_status"),
-            InlineKeyboardButton("Xray Logs", callback_data="xray_logs"),
-        ],
+        [InlineKeyboardButton("VLESS", callback_data="menu_vless"),
+         InlineKeyboardButton("VMESS", callback_data="menu_vmess"),
+         InlineKeyboardButton("Trojan", callback_data="menu_trojan")],
+        [InlineKeyboardButton("SSH Users", callback_data="ssh_list"),
+         InlineKeyboardButton("Online Users", callback_data="online")],
+        [InlineKeyboardButton("User Usage", callback_data="usage"),
+         InlineKeyboardButton("Trial Account", callback_data="menu_trial")],
+        [InlineKeyboardButton("Service Status", callback_data="status"),
+         InlineKeyboardButton("Restart All", callback_data="restart")],
+        [InlineKeyboardButton("Server Info", callback_data="sysinfo"),
+         InlineKeyboardButton("Bandwidth", callback_data="bandwidth")],
+        [InlineKeyboardButton("Speedtest", callback_data="speedtest"),
+         InlineKeyboardButton("RAM Monitor", callback_data="ram")],
+        [InlineKeyboardButton("Netflix Check", callback_data="netflix"),
+         InlineKeyboardButton("WARP Status", callback_data="warp_status")],
+        [InlineKeyboardButton("Xray Logs", callback_data="xray_logs"),
+         InlineKeyboardButton("Check Update", callback_data="check_update")],
+        [InlineKeyboardButton("Backup to TG", callback_data="tg_backup")],
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text("FreeFlow ASVPN Menu:", reply_markup=reply_markup)
@@ -192,45 +178,143 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     data = query.data
 
+    # Protocol sub-menus
+    if data == "menu_vless":
+        keyboard = [
+            [InlineKeyboardButton("Add VLESS", callback_data="add_vless"),
+             InlineKeyboardButton("Delete VLESS", callback_data="del_vless")],
+            [InlineKeyboardButton("List VLESS", callback_data="list_vless"),
+             InlineKeyboardButton("Renew VLESS", callback_data="renew_vless")],
+            [InlineKeyboardButton("Reactivate VLESS", callback_data="react_vless")],
+            [InlineKeyboardButton("« Back", callback_data="back_menu")],
+        ]
+        await query.edit_message_text("VLESS User Management:", reply_markup=InlineKeyboardMarkup(keyboard))
+        return
+
+    if data == "menu_vmess":
+        keyboard = [
+            [InlineKeyboardButton("Add VMESS", callback_data="add_vmess"),
+             InlineKeyboardButton("Delete VMESS", callback_data="del_vmess")],
+            [InlineKeyboardButton("List VMESS", callback_data="list_vmess"),
+             InlineKeyboardButton("Renew VMESS", callback_data="renew_vmess")],
+            [InlineKeyboardButton("Reactivate VMESS", callback_data="react_vmess")],
+            [InlineKeyboardButton("« Back", callback_data="back_menu")],
+        ]
+        await query.edit_message_text("VMESS User Management:", reply_markup=InlineKeyboardMarkup(keyboard))
+        return
+
+    if data == "menu_trojan":
+        keyboard = [
+            [InlineKeyboardButton("Add Trojan", callback_data="add_trojan"),
+             InlineKeyboardButton("Delete Trojan", callback_data="del_trojan")],
+            [InlineKeyboardButton("List Trojan", callback_data="list_trojan"),
+             InlineKeyboardButton("Renew Trojan", callback_data="renew_trojan")],
+            [InlineKeyboardButton("Reactivate Trojan", callback_data="react_trojan")],
+            [InlineKeyboardButton("« Back", callback_data="back_menu")],
+        ]
+        await query.edit_message_text("Trojan User Management:", reply_markup=InlineKeyboardMarkup(keyboard))
+        return
+
+    if data == "menu_trial":
+        keyboard = [
+            [InlineKeyboardButton("VLESS Trial", callback_data="trial_vless"),
+             InlineKeyboardButton("VMESS Trial", callback_data="trial_vmess")],
+            [InlineKeyboardButton("Trojan Trial", callback_data="trial_trojan")],
+            [InlineKeyboardButton("« Back", callback_data="back_menu")],
+        ]
+        await query.edit_message_text("Create Trial Account:", reply_markup=InlineKeyboardMarkup(keyboard))
+        return
+
+    if data == "back_menu":
+        keyboard = [
+            [InlineKeyboardButton("VLESS", callback_data="menu_vless"),
+             InlineKeyboardButton("VMESS", callback_data="menu_vmess"),
+             InlineKeyboardButton("Trojan", callback_data="menu_trojan")],
+            [InlineKeyboardButton("SSH Users", callback_data="ssh_list"),
+             InlineKeyboardButton("Online Users", callback_data="online")],
+            [InlineKeyboardButton("User Usage", callback_data="usage"),
+             InlineKeyboardButton("Trial Account", callback_data="menu_trial")],
+            [InlineKeyboardButton("Service Status", callback_data="status"),
+             InlineKeyboardButton("Restart All", callback_data="restart")],
+            [InlineKeyboardButton("Server Info", callback_data="sysinfo"),
+             InlineKeyboardButton("Bandwidth", callback_data="bandwidth")],
+            [InlineKeyboardButton("Speedtest", callback_data="speedtest"),
+             InlineKeyboardButton("RAM Monitor", callback_data="ram")],
+            [InlineKeyboardButton("Netflix Check", callback_data="netflix"),
+             InlineKeyboardButton("WARP Status", callback_data="warp_status")],
+            [InlineKeyboardButton("Xray Logs", callback_data="xray_logs"),
+             InlineKeyboardButton("Check Update", callback_data="check_update")],
+            [InlineKeyboardButton("Backup to TG", callback_data="tg_backup")],
+        ]
+        await query.edit_message_text("FreeFlow ASVPN Menu:", reply_markup=InlineKeyboardMarkup(keyboard))
+        return
+
+    # Direct command mappings
     cmd_map = {
-        "list_users": "bash /usr/local/lib/freeflow/scripts/user/manage_user.sh list",
-        "list_active": "bash /usr/local/lib/freeflow/scripts/user/manage_user.sh list-active",
-        "list_expired": "bash /usr/local/lib/freeflow/scripts/user/manage_user.sh list-expired",
+        "list_vless": "bash /usr/local/lib/freeflow/scripts/user/manage_user.sh list-active vless",
+        "list_vmess": "bash /usr/local/lib/freeflow/scripts/user/manage_user.sh list-active vmess",
+        "list_trojan": "bash /usr/local/lib/freeflow/scripts/user/manage_user.sh list-active trojan",
+        "ssh_list": "bash /usr/local/lib/freeflow/scripts/menu/menu.sh 2>/dev/null; ls /etc/freeflow/data/users/ssh/active/ 2>/dev/null || echo 'No SSH users'",
         "usage": "bash /usr/local/lib/freeflow/scripts/user/usage_tracker.sh show",
+        "online": "bash /usr/local/lib/freeflow/scripts/user/manage_user.sh online",
         "status": "systemctl is-active xray nginx ssh-ws 2>/dev/null; echo '---'; xray version | head -1",
         "restart": "systemctl restart xray nginx ssh-ws 2>/dev/null; echo 'Services restarted'",
         "sysinfo": "echo \"Hostname: $(hostname)\nOS: $(cat /etc/os-release | grep PRETTY | cut -d= -f2)\nCPU: $(nproc) cores\nRAM: $(free -h | awk '/Mem:/{print $2}')\nDisk: $(df -h / | awk 'NR==2{print $2\" (\"$5\" used)\"}')\nIP: $(curl -s4 ifconfig.me)\nUptime: $(uptime -p)\"",
         "bandwidth": "vnstat 2>/dev/null || echo 'vnstat not installed'",
         "speedtest": "speedtest --accept-license 2>/dev/null || echo 'speedtest not installed'",
+        "ram": "bash /usr/local/lib/freeflow/scripts/tools/ram_monitor.sh",
+        "netflix": "bash /usr/local/lib/freeflow/scripts/tools/netflix_checker.sh",
         "check_update": "bash /usr/local/lib/freeflow/scripts/update/auto_update.sh check",
         "warp_status": "warp-cli status 2>/dev/null || systemctl is-active wg-quick@warp 2>/dev/null || echo 'WARP not installed'",
         "xray_logs": "tail -20 /var/log/xray/access.log 2>/dev/null || echo 'No logs'",
+        "tg_backup": "bash /usr/local/lib/freeflow/scripts/tools/tg_auto_backup.sh send",
+    }
+
+    # Trial account shortcuts
+    trial_map = {
+        "trial_vless": "vless",
+        "trial_vmess": "vmess",
+        "trial_trojan": "trojan",
     }
 
     if data in cmd_map:
         output = run_cmd(cmd_map[data])
-        # Strip ANSI codes for Telegram
         import re
         output = re.sub(r'\x1b\[[0-9;]*m', '', output)
-        # Truncate if too long
         if len(output) > 4000:
             output = output[:4000] + "\n... (truncated)"
         await query.edit_message_text(f"```\n{output}\n```", parse_mode="Markdown")
-    elif data == "add_user":
-        context.user_data["action"] = "add_user"
-        await query.edit_message_text("Enter username for new VLESS user:")
+    elif data in trial_map:
+        proto = trial_map[data]
+        output = run_cmd(f"bash /usr/local/lib/freeflow/scripts/user/manage_user.sh trial {proto}")
+        import re
+        output = re.sub(r'\x1b\[[0-9;]*m', '', output)
+        if len(output) > 4000:
+            output = output[:4000] + "\n... (truncated)"
+        await query.edit_message_text(f"```\n{output}\n```", parse_mode="Markdown")
+    elif data.startswith("add_"):
+        proto = data.replace("add_", "")
+        context.user_data["action"] = f"add_{proto}"
+        context.user_data["protocol"] = proto
+        await query.edit_message_text(f"Enter username for new {proto.upper()} user:")
         return WAITING_USERNAME
-    elif data == "del_user":
-        context.user_data["action"] = "del_user"
-        await query.edit_message_text("Enter username to delete:")
+    elif data.startswith("del_"):
+        proto = data.replace("del_", "")
+        context.user_data["action"] = f"del_{proto}"
+        context.user_data["protocol"] = proto
+        await query.edit_message_text(f"Enter {proto.upper()} username to delete:")
         return WAITING_USERNAME
-    elif data == "renew_user":
-        context.user_data["action"] = "renew_user"
-        await query.edit_message_text("Enter username to renew:")
+    elif data.startswith("renew_"):
+        proto = data.replace("renew_", "")
+        context.user_data["action"] = f"renew_{proto}"
+        context.user_data["protocol"] = proto
+        await query.edit_message_text(f"Enter {proto.upper()} username to renew:")
         return WAITING_USERNAME
-    elif data == "reactivate_user":
-        context.user_data["action"] = "reactivate_user"
-        await query.edit_message_text("Enter username to reactivate:")
+    elif data.startswith("react_"):
+        proto = data.replace("react_", "")
+        context.user_data["action"] = f"react_{proto}"
+        context.user_data["protocol"] = proto
+        await query.edit_message_text(f"Enter {proto.upper()} username to reactivate:")
         return WAITING_USERNAME
 
 async def handle_username(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -241,24 +325,29 @@ async def handle_username(update: Update, context: ContextTypes.DEFAULT_TYPE):
     action = context.user_data.get("action", "")
     context.user_data["username"] = username
 
-    if action == "add_user":
+    if action.startswith("add_"):
         await update.message.reply_text(
             f"UUID for '{username}'?\n"
             "Send a custom name (e.g. 'Ahmad') or 'random' for auto-generated:"
         )
         return WAITING_UUID
-    elif action == "del_user":
+    elif action.startswith("del_"):
+        proto = context.user_data.get("protocol", "vless")
         output = run_cmd(
-            f"bash -c 'source /usr/local/lib/freeflow/scripts/user/manage_user.sh; "
-            f"echo y | delete_vless_user_noninteractive \"{username}\"' 2>/dev/null || "
-            f"echo \"User {username} — manual deletion needed via VPS\""
+            f"rm -f /etc/freeflow/data/users/{proto}/active/{username} "
+            f"/etc/freeflow/data/users/{proto}/expired/{username} && "
+            f"jq --arg email '{username}@freeflow' '.inbounds |= map(if .settings.clients then "
+            f".settings.clients = [.settings.clients[] | select(.email != $email)] else . end)' "
+            f"/etc/xray/config.json > /tmp/xray_tmp.json && "
+            f"mv /tmp/xray_tmp.json /etc/xray/config.json && "
+            f"systemctl restart xray && echo 'User {username} deleted'"
         )
         await update.message.reply_text(output)
         return ConversationHandler.END
-    elif action == "renew_user":
+    elif action.startswith("renew_"):
         await update.message.reply_text("How many days to extend?")
         return WAITING_DAYS
-    elif action == "reactivate_user":
+    elif action.startswith("react_"):
         await update.message.reply_text("How many days for reactivation?")
         return WAITING_DAYS
 
@@ -278,10 +367,10 @@ async def handle_days(update: Update, context: ContextTypes.DEFAULT_TYPE):
     days = update.message.text.strip() or "30"
     action = context.user_data.get("action", "")
     username = context.user_data.get("username", "")
+    protocol = context.user_data.get("protocol", "vless")
 
-    if action == "add_user":
+    if action.startswith("add_"):
         uuid_input = context.user_data.get("uuid_input", "random")
-        # Create user via script
         if uuid_input.lower() == "random":
             uuid_cmd = "cat /proc/sys/kernel/random/uuid"
         else:
@@ -290,56 +379,82 @@ async def handle_days(update: Update, context: ContextTypes.DEFAULT_TYPE):
         uuid = run_cmd(uuid_cmd)
         expiry = run_cmd(f"date -d '+{days} days' +'%Y-%m-%d'")
 
-        # Add to system
-        output = run_cmd(
+        # Create user file
+        run_cmd(
             f"bash -c '"
-            f"source /usr/local/lib/freeflow/scripts/core/common.sh && "
-            f"setup_directories && "
-            f"echo \"USERNAME={username}\" > /etc/freeflow/data/users/vless/active/{username} && "
-            f"echo \"UUID={uuid}\" >> /etc/freeflow/data/users/vless/active/{username} && "
-            f"echo \"CREATED=$(date +%Y-%m-%d)\" >> /etc/freeflow/data/users/vless/active/{username} && "
-            f"echo \"EXPIRY={expiry}\" >> /etc/freeflow/data/users/vless/active/{username} && "
-            f"echo \"MAX_IP=2\" >> /etc/freeflow/data/users/vless/active/{username} && "
-            f"echo \"DATA_LIMIT_GB=0\" >> /etc/freeflow/data/users/vless/active/{username} && "
-            f"echo \"STATUS=active\" >> /etc/freeflow/data/users/vless/active/{username} && "
+            f"mkdir -p /etc/freeflow/data/users/{protocol}/active && "
+            f"cat > /etc/freeflow/data/users/{protocol}/active/{username} << USEREOF\n"
+            f"USERNAME={username}\n"
+            f"UUID={uuid}\n"
+            f"PROTOCOL={protocol}\n"
+            f"CREATED=$(date +%Y-%m-%d)\n"
+            f"EXPIRY={expiry}\n"
+            f"MAX_IP=2\n"
+            f"DATA_LIMIT_GB=0\n"
+            f"STATUS=active\n"
+            f"USEREOF\n"
             f"echo 0 > /etc/freeflow/data/usage/{username}'"
         )
 
-        # Add to xray config
+        # Add to xray config based on protocol
+        if protocol == "vless":
+            jq_filter = (
+                f".inbounds |= map("
+                f"if (.tag == \"vless-ws\" or .tag == \"vless-httpupgrade\" or .tag == \"vless-xhttp\" or .tag == \"vless-grpc\") then "
+                f".settings.clients += [{{\"id\": $uuid, \"email\": $email}}] "
+                f"elif .tag == \"vless-reality\" then "
+                f".settings.clients += [{{\"id\": $uuid, \"flow\": \"xtls-rprx-vision\", \"email\": $email}}] "
+                f"else . end)"
+            )
+        elif protocol == "vmess":
+            jq_filter = (
+                f".inbounds |= map("
+                f"if .tag == \"vmess-ws\" or .tag == \"vmess-grpc\" then "
+                f".settings.clients += [{{\"id\": $uuid, \"alterId\": 0, \"email\": $email}}] "
+                f"else . end)"
+            )
+        else:  # trojan
+            jq_filter = (
+                f".inbounds |= map("
+                f"if .tag == \"trojan-ws\" or .tag == \"trojan-grpc\" or .tag == \"trojan-tcp\" then "
+                f".settings.clients += [{{\"password\": $uuid, \"email\": $email}}] "
+                f"else . end)"
+            )
+
         run_cmd(
             f"jq --arg uuid \"{uuid}\" --arg email \"{username}@freeflow\" '"
-            f".inbounds |= map(if .tag == \"vless-ws\" or .tag == \"vless-httpupgrade\" or .tag == \"vless-xhttp\" "
-            f"then .settings.clients += [{{\"id\": $uuid, \"email\": $email}}] else . end)' "
-            f"/etc/xray/config.json > /tmp/xray_tmp.json && mv /tmp/xray_tmp.json /etc/xray/config.json && "
+            f"{jq_filter}' "
+            f"/etc/xray/config.json > /tmp/xray_tmp.json && "
+            f"mv /tmp/xray_tmp.json /etc/xray/config.json && "
             f"systemctl restart xray"
         )
 
         domain = run_cmd("cat /etc/freeflow/domain 2>/dev/null")
         await update.message.reply_text(
-            f"User Created!\n\n"
+            f"✅ {protocol.upper()} User Created!\n\n"
             f"Username: {username}\n"
             f"UUID: {uuid}\n"
             f"Expiry: {expiry}\n"
             f"Domain: {domain}\n\n"
-            f"Ports (TLS): 443,8443,2083,2087\n"
-            f"Ports (nonTLS): 80,8080,8880,2086"
+            f"TLS Ports: 443,8443,2083,2087\n"
+            f"nonTLS Ports: 80,8080,8880,2086"
         )
-    elif action == "renew_user":
+    elif action.startswith("renew_"):
         output = run_cmd(
-            f"bash -c 'exp=$(grep EXPIRY /etc/freeflow/data/users/vless/active/{username} | cut -d= -f2) && "
+            f"bash -c 'exp=$(grep EXPIRY /etc/freeflow/data/users/{protocol}/active/{username} | cut -d= -f2) && "
             f"new=$(date -d \"$exp + {days} days\" +%Y-%m-%d) && "
-            f"sed -i \"s/^EXPIRY=.*/EXPIRY=$new/\" /etc/freeflow/data/users/vless/active/{username} && "
+            f"sed -i \"s/^EXPIRY=.*/EXPIRY=$new/\" /etc/freeflow/data/users/{protocol}/active/{username} && "
             f"echo \"Renewed until $new\"'"
         )
         await update.message.reply_text(output)
-    elif action == "reactivate_user":
+    elif action.startswith("react_"):
         output = run_cmd(
-            f"bash -c 'source /usr/local/lib/freeflow/scripts/core/common.sh && "
+            f"bash -c '"
             f"exp=$(date -d \"+{days} days\" +%Y-%m-%d) && "
-            f"uuid=$(grep UUID /etc/freeflow/data/users/vless/expired/{username} | cut -d= -f2) && "
-            f"sed -i \"s/^EXPIRY=.*/EXPIRY=$exp/\" /etc/freeflow/data/users/vless/expired/{username} && "
-            f"sed -i \"s/^STATUS=.*/STATUS=active/\" /etc/freeflow/data/users/vless/expired/{username} && "
-            f"mv /etc/freeflow/data/users/vless/expired/{username} /etc/freeflow/data/users/vless/active/{username} && "
+            f"uuid=$(grep UUID /etc/freeflow/data/users/{protocol}/expired/{username} | cut -d= -f2) && "
+            f"sed -i \"s/^EXPIRY=.*/EXPIRY=$exp/\" /etc/freeflow/data/users/{protocol}/expired/{username} && "
+            f"sed -i \"s/^STATUS=.*/STATUS=active/\" /etc/freeflow/data/users/{protocol}/expired/{username} && "
+            f"mv /etc/freeflow/data/users/{protocol}/expired/{username} /etc/freeflow/data/users/{protocol}/active/{username} && "
             f"echo \"Reactivated until $exp (UUID: $uuid)\"'"
         )
         await update.message.reply_text(output)
@@ -353,7 +468,6 @@ def main():
 
     app = Application.builder().token(BOT_TOKEN).build()
 
-    # Conversation handler for multi-step commands
     conv_handler = ConversationHandler(
         entry_points=[CallbackQueryHandler(button_handler)],
         states={

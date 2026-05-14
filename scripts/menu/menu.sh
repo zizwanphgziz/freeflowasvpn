@@ -1,6 +1,7 @@
 #!/bin/bash
 # ============================================================
 # FreeFlow ASVPN - Main Menu
+# Supports: VLESS, VMESS, Trojan, SSH + all tools
 # ============================================================
 
 # Determine install location
@@ -37,6 +38,11 @@ show_service_status() {
     else
         echo -e "   ${YELLOW}○${NC} warp (not installed)"
     fi
+
+    # Ads blocker
+    if [[ -f "${CONFIG_DIR}/modules/ads_blocker_installed" ]]; then
+        echo -e "   ${GREEN}●${NC} ads-blocker"
+    fi
 }
 
 show_server_info() {
@@ -66,79 +72,139 @@ main_menu() {
         echo -e "  ${GREEN}1${NC}.  Add VLESS User"
         echo -e "  ${GREEN}2${NC}.  Delete VLESS User"
         echo -e "  ${GREEN}3${NC}.  Renew VLESS User"
-        echo -e "  ${GREEN}4${NC}.  Reactivate Expired User"
-        echo -e "  ${GREEN}5${NC}.  List Active Users"
-        echo -e "  ${GREEN}6${NC}.  List Expired Users"
-        echo -e "  ${GREEN}7${NC}.  User Data Usage"
+        echo -e "  ${GREEN}4${NC}.  Reactivate Expired VLESS User"
+        echo -e "  ${GREEN}5${NC}.  List Active VLESS Users"
+        echo -e "  ${GREEN}6${NC}.  List Expired VLESS Users"
+        echo ""
+        print_line
+        echo -e " ${BOLD}${WHITE}VMESS USER MANAGEMENT${NC}"
+        print_line
+        echo -e "  ${GREEN}7${NC}.  Add VMESS User"
+        echo -e "  ${GREEN}8${NC}.  Delete VMESS User"
+        echo -e "  ${GREEN}9${NC}.  Renew VMESS User"
+        echo -e "  ${GREEN}10${NC}. Reactivate Expired VMESS User"
+        echo -e "  ${GREEN}11${NC}. List Active/Expired VMESS Users"
+        echo ""
+        print_line
+        echo -e " ${BOLD}${WHITE}TROJAN USER MANAGEMENT${NC}"
+        print_line
+        echo -e "  ${GREEN}12${NC}. Add Trojan User"
+        echo -e "  ${GREEN}13${NC}. Delete Trojan User"
+        echo -e "  ${GREEN}14${NC}. Renew Trojan User"
+        echo -e "  ${GREEN}15${NC}. Reactivate Expired Trojan User"
+        echo -e "  ${GREEN}16${NC}. List Active/Expired Trojan Users"
+        echo ""
+        print_line
+        echo -e " ${BOLD}${WHITE}USER TOOLS${NC}"
+        print_line
+        echo -e "  ${GREEN}17${NC}. User Data Usage"
+        echo -e "  ${GREEN}18${NC}. Check Online Users"
+        echo -e "  ${GREEN}19${NC}. Create Trial Account"
+        echo -e "  ${GREEN}20${NC}. YAML Config Generator"
+        echo -e "  ${GREEN}21${NC}. Share Link / WSS Converter"
         echo ""
         print_line
         echo -e " ${BOLD}${WHITE}SSH WEBSOCKET${NC}"
         print_line
-        echo -e "  ${GREEN}8${NC}.  Add SSH User"
-        echo -e "  ${GREEN}9${NC}.  Delete SSH User"
-        echo -e "  ${GREEN}10${NC}. List SSH Users"
+        echo -e "  ${GREEN}22${NC}. Add SSH User"
+        echo -e "  ${GREEN}23${NC}. Delete SSH User"
+        echo -e "  ${GREEN}24${NC}. List SSH Users"
+        echo -e "  ${GREEN}25${NC}. Install/Uninstall SSH WebSocket"
         echo ""
         print_line
         echo -e " ${BOLD}${WHITE}MODULES${NC}"
         print_line
-        echo -e "  ${GREEN}11${NC}. Install/Uninstall SSH WebSocket"
-        echo -e "  ${GREEN}12${NC}. Install/Uninstall WARP"
-        echo -e "  ${GREEN}13${NC}. WARP Domain Routing"
+        echo -e "  ${GREEN}26${NC}. Install/Uninstall WARP"
+        echo -e "  ${GREEN}27${NC}. WARP Domain Routing"
+        echo -e "  ${GREEN}28${NC}. Install/Uninstall Ads Blocker"
         echo ""
         print_line
         echo -e " ${BOLD}${WHITE}SERVER MANAGEMENT${NC}"
         print_line
-        echo -e "  ${GREEN}14${NC}. Restart All Services"
-        echo -e "  ${GREEN}15${NC}. Check Xray Config"
-        echo -e "  ${GREEN}16${NC}. View Xray Logs"
-        echo -e "  ${GREEN}17${NC}. Speedtest"
-        echo -e "  ${GREEN}18${NC}. Server Bandwidth (vnstat)"
-        echo -e "  ${GREEN}19${NC}. Change Domain"
-        echo -e "  ${GREEN}20${NC}. Renew SSL Certificate"
+        echo -e "  ${GREEN}29${NC}. Restart All Services"
+        echo -e "  ${GREEN}30${NC}. Check Xray Config"
+        echo -e "  ${GREEN}31${NC}. View Xray Logs"
+        echo -e "  ${GREEN}32${NC}. Speedtest"
+        echo -e "  ${GREEN}33${NC}. Server Bandwidth (vnstat)"
+        echo -e "  ${GREEN}34${NC}. RAM Monitor"
+        echo -e "  ${GREEN}35${NC}. Change Domain"
+        echo -e "  ${GREEN}36${NC}. Renew SSL Certificate"
+        echo -e "  ${GREEN}37${NC}. DNS Changer"
+        echo -e "  ${GREEN}38${NC}. Netflix Region Checker"
         echo ""
         print_line
         echo -e " ${BOLD}${WHITE}SYSTEM${NC}"
         print_line
-        echo -e "  ${GREEN}21${NC}. Update Script"
-        echo -e "  ${GREEN}22${NC}. Auto Update Settings"
-        echo -e "  ${GREEN}23${NC}. Set Auto Reboot"
-        echo -e "  ${GREEN}24${NC}. Telegram Bot Setup"
-        echo -e "  ${GREEN}25${NC}. System Info"
-        echo -e "  ${GREEN}26${NC}. Backup/Restore"
+        echo -e "  ${GREEN}39${NC}. Update Script"
+        echo -e "  ${GREEN}40${NC}. Auto Update Settings"
+        echo -e "  ${GREEN}41${NC}. Set Auto Reboot"
+        echo -e "  ${GREEN}42${NC}. Auto Clear Log"
+        echo -e "  ${GREEN}43${NC}. Telegram Bot Setup"
+        echo -e "  ${GREEN}44${NC}. Telegram Auto Backup"
+        echo -e "  ${GREEN}45${NC}. System Info"
+        echo -e "  ${GREEN}46${NC}. Backup/Restore"
         echo ""
         print_line
         echo -e "  ${RED}0${NC}.  Exit"
         print_line
         echo ""
-        read -rp " Select menu [0-26]: " menu_choice
+        read -rp " Select menu [0-46]: " menu_choice
 
         case "${menu_choice}" in
+            # VLESS
             1)  source "${SCRIPT_BASE}/user/manage_user.sh"; add_vless_user ;;
             2)  source "${SCRIPT_BASE}/user/manage_user.sh"; delete_vless_user ;;
             3)  source "${SCRIPT_BASE}/user/manage_user.sh"; renew_vless_user ;;
             4)  source "${SCRIPT_BASE}/user/manage_user.sh"; reactivate_vless_user ;;
-            5)  source "${SCRIPT_BASE}/user/manage_user.sh"; list_active_users ;;
-            6)  source "${SCRIPT_BASE}/user/manage_user.sh"; list_expired_users ;;
-            7)  usage_menu ;;
-            8)  ssh_add_user ;;
-            9)  ssh_delete_user ;;
-            10) ssh_list_users ;;
-            11) ssh_ws_menu ;;
-            12) warp_menu ;;
-            13) source "${SCRIPT_BASE}/warp/install_warp.sh"; add_warp_route ;;
-            14) restart_all_services ;;
-            15) check_xray_config ;;
-            16) view_xray_logs ;;
-            17) run_speedtest ;;
-            18) show_bandwidth ;;
-            19) change_domain ;;
-            20) renew_ssl ;;
-            21) source "${SCRIPT_BASE}/update/auto_update.sh"; check_update; [[ $? -eq 2 ]] && confirm "Update now?" && do_update ;;
-            22) source "${SCRIPT_BASE}/update/auto_update.sh"; setup_auto_update_cron ;;
-            23) setup_auto_reboot ;;
-            24) source "${SCRIPT_BASE}/telegram/setup_bot.sh"; setup_telegram_bot ;;
-            25) system_info ;;
-            26) backup_restore_menu ;;
+            5)  source "${SCRIPT_BASE}/user/manage_user.sh"; list_protocol_active "vless" ;;
+            6)  source "${SCRIPT_BASE}/user/manage_user.sh"; list_protocol_expired "vless" ;;
+            # VMESS
+            7)  source "${SCRIPT_BASE}/user/manage_user.sh"; add_vmess_user ;;
+            8)  source "${SCRIPT_BASE}/user/manage_user.sh"; delete_vmess_user ;;
+            9)  source "${SCRIPT_BASE}/user/manage_user.sh"; renew_vmess_user ;;
+            10) source "${SCRIPT_BASE}/user/manage_user.sh"; reactivate_vmess_user ;;
+            11) source "${SCRIPT_BASE}/user/manage_user.sh"; list_protocol_active "vmess"; list_protocol_expired "vmess" ;;
+            # TROJAN
+            12) source "${SCRIPT_BASE}/user/manage_user.sh"; add_trojan_user ;;
+            13) source "${SCRIPT_BASE}/user/manage_user.sh"; delete_trojan_user ;;
+            14) source "${SCRIPT_BASE}/user/manage_user.sh"; renew_trojan_user ;;
+            15) source "${SCRIPT_BASE}/user/manage_user.sh"; reactivate_trojan_user ;;
+            16) source "${SCRIPT_BASE}/user/manage_user.sh"; list_protocol_active "trojan"; list_protocol_expired "trojan" ;;
+            # USER TOOLS
+            17) usage_menu ;;
+            18) source "${SCRIPT_BASE}/user/manage_user.sh"; check_login_users ;;
+            19) trial_menu ;;
+            20) yaml_menu ;;
+            21) source "${SCRIPT_BASE}/tools/wss_converter.sh"; convert_user_configs ;;
+            # SSH
+            22) ssh_add_user ;;
+            23) ssh_delete_user ;;
+            24) ssh_list_users ;;
+            25) ssh_ws_menu ;;
+            # MODULES
+            26) warp_menu ;;
+            27) source "${SCRIPT_BASE}/warp/install_warp.sh"; add_warp_route ;;
+            28) ads_menu ;;
+            # SERVER
+            29) restart_all_services ;;
+            30) check_xray_config ;;
+            31) view_xray_logs ;;
+            32) run_speedtest ;;
+            33) show_bandwidth ;;
+            34) source "${SCRIPT_BASE}/tools/ram_monitor.sh"; show_ram_usage ;;
+            35) change_domain ;;
+            36) renew_ssl ;;
+            37) source "${SCRIPT_BASE}/tools/dns_changer.sh"; change_dns ;;
+            38) source "${SCRIPT_BASE}/tools/netflix_checker.sh"; check_netflix_region ;;
+            # SYSTEM
+            39) source "${SCRIPT_BASE}/update/auto_update.sh"; check_update; [[ $? -eq 2 ]] && confirm "Update now?" && do_update ;;
+            40) source "${SCRIPT_BASE}/update/auto_update.sh"; setup_auto_update_cron ;;
+            41) setup_auto_reboot ;;
+            42) source "${SCRIPT_BASE}/tools/auto_clear_log.sh"; setup_auto_clear ;;
+            43) source "${SCRIPT_BASE}/telegram/setup_bot.sh"; setup_telegram_bot ;;
+            44) source "${SCRIPT_BASE}/tools/tg_auto_backup.sh"; setup_auto_backup ;;
+            45) system_info ;;
+            46) backup_restore_menu ;;
             0)  echo -e "\n ${GREEN}Goodbye!${NC}\n"; exit 0 ;;
             *)  msg_warn "Invalid option" ;;
         esac
@@ -164,6 +230,38 @@ usage_menu() {
             source "${SCRIPT_BASE}/user/usage_tracker.sh"; show_user_usage "${uname}"
             ;;
         3) return ;;
+    esac
+}
+
+trial_menu() {
+    print_section "Create Trial Account"
+    echo -e "  ${GREEN}1${NC}. VLESS Trial"
+    echo -e "  ${GREEN}2${NC}. VMESS Trial"
+    echo -e "  ${GREEN}3${NC}. Trojan Trial"
+    echo -e "  ${GREEN}4${NC}. Back"
+    echo ""
+    read -rp " Choose: " choice
+    case "${choice}" in
+        1) source "${SCRIPT_BASE}/user/manage_user.sh"; create_trial_account "vless" ;;
+        2) source "${SCRIPT_BASE}/user/manage_user.sh"; create_trial_account "vmess" ;;
+        3) source "${SCRIPT_BASE}/user/manage_user.sh"; create_trial_account "trojan" ;;
+        4) return ;;
+    esac
+}
+
+yaml_menu() {
+    print_section "YAML Config Generator"
+    echo -e "  ${GREEN}1${NC}. Generate VLESS YAML"
+    echo -e "  ${GREEN}2${NC}. Generate VMESS YAML"
+    echo -e "  ${GREEN}3${NC}. Generate Trojan YAML"
+    echo -e "  ${GREEN}4${NC}. Back"
+    echo ""
+    read -rp " Choose: " choice
+    case "${choice}" in
+        1) source "${SCRIPT_BASE}/tools/yaml_generator.sh"; generate_clash_config "vless" ;;
+        2) source "${SCRIPT_BASE}/tools/yaml_generator.sh"; generate_clash_config "vmess" ;;
+        3) source "${SCRIPT_BASE}/tools/yaml_generator.sh"; generate_clash_config "trojan" ;;
+        4) return ;;
     esac
 }
 
@@ -207,6 +305,28 @@ warp_menu() {
     fi
 }
 
+ads_menu() {
+    if [[ -f "${CONFIG_DIR}/modules/ads_blocker_installed" ]]; then
+        echo -e "  Ads Blocker is ${GREEN}installed${NC}"
+        echo -e "  ${GREEN}1${NC}. Update blocklist"
+        echo -e "  ${GREEN}2${NC}. Uninstall"
+        echo -e "  ${GREEN}3${NC}. Back"
+        echo ""
+        read -rp " Choose: " choice
+        case "${choice}" in
+            1) source "${SCRIPT_BASE}/tools/ads_blocker.sh"; update_ads_blocker ;;
+            2) source "${SCRIPT_BASE}/tools/ads_blocker.sh"; uninstall_ads_blocker ;;
+            3) return ;;
+        esac
+    else
+        echo -e "  Ads Blocker is ${RED}not installed${NC}"
+        if confirm "Install Ads Blocker?"; then
+            source "${SCRIPT_BASE}/tools/ads_blocker.sh"
+            install_ads_blocker
+        fi
+    fi
+}
+
 ssh_add_user() {
     print_section "Add SSH User"
     read -rp " Username: " username
@@ -221,7 +341,6 @@ ssh_add_user() {
     useradd -M -s /bin/false -e "${expiry}" "${username}" 2>/dev/null
     echo "${username}:${password}" | chpasswd
 
-    # Save SSH user data
     cat > "${USER_DB}/ssh/active/${username}" <<EOF
 USERNAME=${username}
 CREATED=$(date +"%Y-%m-%d")
@@ -308,7 +427,6 @@ change_domain() {
     [[ -z "${new_domain}" ]] && { msg_fail "Empty domain"; return; }
     echo "${new_domain}" > "${CONFIG_DIR}/domain"
 
-    # Re-setup SSL
     source "${SCRIPT_BASE}/nginx/install_nginx.sh"
     setup_ssl_certificate
     generate_nginx_config

@@ -1,14 +1,26 @@
 #!/bin/bash
 # ============================================================
 # FreeFlow ASVPN - User Management System
+# Supports: VLESS, VMESS, Trojan protocols
 # ============================================================
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/../core/common.sh"
 
-# --- Add User ---
-add_vless_user() {
-    print_section "Add VLESS User"
+# All VLESS inbound tags
+VLESS_TAGS=("vless-ws" "vless-httpupgrade" "vless-xhttp" "vless-grpc" "vless-reality")
+# All VMESS inbound tags
+VMESS_TAGS=("vmess-ws" "vmess-grpc")
+# All Trojan inbound tags
+TROJAN_TAGS=("trojan-ws" "trojan-grpc" "trojan-tcp")
+
+# --- Generic add user for a protocol ---
+add_protocol_user() {
+    local protocol="$1" # vless, vmess, trojan
+    local display_name
+    display_name=$(echo "${protocol}" | tr '[:lower:]' '[:upper:]')
+
+    print_section "Add ${display_name} User"
 
     read -rp " Username: " username
     if [[ -z "${username}" ]]; then
@@ -16,14 +28,12 @@ add_vless_user() {
         return 1
     fi
 
-    # Check if user already exists (active or expired)
-    if [[ -f "${USER_DB}/vless/active/${username}" ]] || [[ -f "${USER_DB}/vless/expired/${username}" ]]; then
+    if [[ -f "${USER_DB}/${protocol}/active/${username}" ]] || [[ -f "${USER_DB}/${protocol}/expired/${username}" ]]; then
         msg_fail "User '${username}' already exists"
         msg_info "Use reactivate to re-enable an expired user"
         return 1
     fi
 
-    # UUID prompt
     echo ""
     echo -e " ${BOLD}UUID Configuration${NC}"
     read -rp " Custom UUID/name? (leave empty for random): " custom_name
@@ -36,24 +46,21 @@ add_vless_user() {
         msg_info "Random UUID: ${uuid}"
     fi
 
-    # Expiry
     read -rp " Validity in days (default: 30): " days
     days="${days:-30}"
     local expiry
     expiry=$(get_expiry_date "${days}")
 
-    # IP limit
     read -rp " Max connections/IPs (default: 2, 0=unlimited): " max_ip
     max_ip="${max_ip:-2}"
 
-    # Data limit
     read -rp " Data limit in GB (default: 0=unlimited): " data_limit
     data_limit="${data_limit:-0}"
 
-    # Save user data
-    cat > "${USER_DB}/vless/active/${username}" <<EOF
+    cat > "${USER_DB}/${protocol}/active/${username}" <<EOF
 USERNAME=${username}
 UUID=${uuid}
+PROTOCOL=${protocol}
 CREATED=$(date +"%Y-%m-%d")
 EXPIRY=${expiry}
 MAX_IP=${max_ip}
@@ -61,48 +68,97 @@ DATA_LIMIT_GB=${data_limit}
 STATUS=active
 EOF
 
-    # Add user to Xray config
-    local tmp_config
-    tmp_config=$(mktemp)
-
-    jq --arg uuid "${uuid}" --arg email "${username}@freeflow" '
-        .inbounds |= map(
-            if .tag == "vless-ws" or .tag == "vless-httpupgrade" or .tag == "vless-xhttp" then
-                .settings.clients += [{"id": $uuid, "email": $email}]
+    # Determine which inbound tags to add user to
+    local -a tags
+    local jq_filter
+    case "${protocol}" in
+        vless)
+            tags=("${VLESS_TAGS[@]}")
+            # VLESS Reality needs "flow" field
+            local tmp_config
+            tmp_config=$(mktemp)
+            jq --arg uuid "${uuid}" --arg email "${username}@freeflow" '
+                .inbounds |= map(
+                    if (.tag == "vless-ws" or .tag == "vless-httpupgrade" or .tag == "vless-xhttp" or .tag == "vless-grpc") then
+                        .settings.clients += [{"id": $uuid, "email": $email}]
+                    elif .tag == "vless-reality" then
+                        .settings.clients += [{"id": $uuid, "flow": "xtls-rprx-vision", "email": $email}]
+                    else
+                        .
+                    end
+                )
+            ' "${XRAY_CONFIG}" > "${tmp_config}"
+            if [[ -s "${tmp_config}" ]]; then
+                mv "${tmp_config}" "${XRAY_CONFIG}"
             else
-                .
-            end
-        )
-    ' "${XRAY_CONFIG}" > "${tmp_config}"
+                rm -f "${tmp_config}"
+                msg_fail "Could not add user to Xray config"
+                return 1
+            fi
+            ;;
+        vmess)
+            tags=("${VMESS_TAGS[@]}")
+            local tmp_config
+            tmp_config=$(mktemp)
+            jq --arg uuid "${uuid}" --arg email "${username}@freeflow" '
+                .inbounds |= map(
+                    if .tag == "vmess-ws" or .tag == "vmess-grpc" then
+                        .settings.clients += [{"id": $uuid, "alterId": 0, "email": $email}]
+                    else
+                        .
+                    end
+                )
+            ' "${XRAY_CONFIG}" > "${tmp_config}"
+            if [[ -s "${tmp_config}" ]]; then
+                mv "${tmp_config}" "${XRAY_CONFIG}"
+            else
+                rm -f "${tmp_config}"
+                msg_fail "Could not add user to Xray config"
+                return 1
+            fi
+            ;;
+        trojan)
+            tags=("${TROJAN_TAGS[@]}")
+            local tmp_config
+            tmp_config=$(mktemp)
+            jq --arg password "${uuid}" --arg email "${username}@freeflow" '
+                .inbounds |= map(
+                    if .tag == "trojan-ws" or .tag == "trojan-grpc" or .tag == "trojan-tcp" then
+                        .settings.clients += [{"password": $password, "email": $email}]
+                    else
+                        .
+                    end
+                )
+            ' "${XRAY_CONFIG}" > "${tmp_config}"
+            if [[ -s "${tmp_config}" ]]; then
+                mv "${tmp_config}" "${XRAY_CONFIG}"
+            else
+                rm -f "${tmp_config}"
+                msg_fail "Could not add user to Xray config"
+                return 1
+            fi
+            ;;
+    esac
 
-    if [[ -s "${tmp_config}" ]]; then
-        mv "${tmp_config}" "${XRAY_CONFIG}"
-        restart_service xray
-    else
-        rm -f "${tmp_config}"
-        msg_fail "Could not add user to Xray config"
-        return 1
-    fi
+    restart_service xray
 
-    # Initialize usage tracking
     echo "0" > "${DATA_DIR}/usage/${username}"
 
-    # Display user info
-    local domain
+    local domain server_ip
     domain=$(get_domain)
-    local server_ip
     server_ip=$(get_server_ip)
 
     # Load paths
-    local vless_ws_path="/"
-    local vless_hu_path="/vless-hu"
-    local vless_xhttp_path="/vless-xhttp"
+    local vless_ws_path="/" vless_hu_path="/vless-hu" vless_xhttp_path="/vless-xhttp"
+    local vless_grpc_sn="vless-grpc" vmess_ws_path="/vmess-ws" vmess_grpc_sn="vmess-grpc"
+    local trojan_ws_path="/trojan-ws" trojan_grpc_sn="trojan-grpc"
     if [[ -f "${CONFIG_DIR}/paths.conf" ]]; then
         source "${CONFIG_DIR}/paths.conf"
     fi
 
     print_section "User Created Successfully"
     echo -e " ${GREEN}Username${NC}  : ${username}"
+    echo -e " ${GREEN}Protocol${NC}  : ${display_name}"
     echo -e " ${GREEN}UUID${NC}      : ${uuid}"
     echo -e " ${GREEN}Expiry${NC}    : ${expiry} (${days} days)"
     echo -e " ${GREEN}Max IPs${NC}   : ${max_ip}"
@@ -114,26 +170,40 @@ EOF
     echo -e " ${CYAN}Domain${NC}    : ${domain}"
     echo -e " ${CYAN}IP${NC}        : ${server_ip}"
     echo ""
-    echo -e " ${YELLOW}VLESS WS${NC}"
-    echo -e "   Port (TLS)    : 443,8443,2083,2087"
-    echo -e "   Port (nonTLS) : 80,8080,8880,2086"
-    echo -e "   Path          : ${vless_ws_path}"
-    echo ""
-    echo -e " ${YELLOW}VLESS HttpUpgrade${NC}"
-    echo -e "   Port (TLS)    : 443,8443,2083,2087"
-    echo -e "   Port (nonTLS) : 80,8080,8880,2086"
-    echo -e "   Path          : ${vless_hu_path}"
-    echo ""
-    echo -e " ${YELLOW}VLESS XHTTP${NC}"
-    echo -e "   Port (TLS)    : 443,8443,2083,2087"
-    echo -e "   Port (nonTLS) : 80,8080,8880,2086"
-    echo -e "   Path          : ${vless_xhttp_path}"
+
+    case "${protocol}" in
+        vless)
+            echo -e " ${YELLOW}VLESS WS${NC}: TLS=443,8443,2083,2087 | nonTLS=80,8080,8880,2086 | path=${vless_ws_path}"
+            echo -e " ${YELLOW}VLESS HU${NC}: TLS=443,8443,2083,2087 | nonTLS=80,8080,8880,2086 | path=${vless_hu_path}"
+            echo -e " ${YELLOW}VLESS XHTTP${NC}: TLS=443,8443,2083,2087 | nonTLS=80,8080,8880,2086 | path=${vless_xhttp_path}"
+            echo -e " ${YELLOW}VLESS gRPC${NC}: TLS=443,8443,2083,2087 | nonTLS=80,8080,8880,2086 | sn=${vless_grpc_sn}"
+            echo -e " ${YELLOW}VLESS Reality${NC}: port=443 | sni=www.google.com"
+            ;;
+        vmess)
+            echo -e " ${YELLOW}VMESS WS${NC}: TLS=443,8443,2083,2087 | nonTLS=80,8080,8880,2086 | path=${vmess_ws_path}"
+            echo -e " ${YELLOW}VMESS gRPC${NC}: TLS=443,8443,2083,2087 | nonTLS=80,8080,8880,2086 | sn=${vmess_grpc_sn}"
+            ;;
+        trojan)
+            echo -e " ${YELLOW}Trojan WS${NC}: TLS=443,8443,2083,2087 | nonTLS=80,8080,8880,2086 | path=${trojan_ws_path}"
+            echo -e " ${YELLOW}Trojan gRPC${NC}: TLS=443,8443,2083,2087 | nonTLS=80,8080,8880,2086 | sn=${trojan_grpc_sn}"
+            echo -e " ${YELLOW}Trojan TCP${NC}: port=443 (via Reality fallback)"
+            ;;
+    esac
     print_line
 }
 
+# Convenience wrappers
+add_vless_user() { add_protocol_user "vless"; }
+add_vmess_user() { add_protocol_user "vmess"; }
+add_trojan_user() { add_protocol_user "trojan"; }
+
 # --- Delete User ---
-delete_vless_user() {
-    print_section "Delete VLESS User"
+delete_protocol_user() {
+    local protocol="$1"
+    local display_name
+    display_name=$(echo "${protocol}" | tr '[:lower:]' '[:upper:]')
+
+    print_section "Delete ${display_name} User"
 
     read -rp " Username to delete: " username
     if [[ -z "${username}" ]]; then
@@ -142,10 +212,10 @@ delete_vless_user() {
     fi
 
     local user_file=""
-    if [[ -f "${USER_DB}/vless/active/${username}" ]]; then
-        user_file="${USER_DB}/vless/active/${username}"
-    elif [[ -f "${USER_DB}/vless/expired/${username}" ]]; then
-        user_file="${USER_DB}/vless/expired/${username}"
+    if [[ -f "${USER_DB}/${protocol}/active/${username}" ]]; then
+        user_file="${USER_DB}/${protocol}/active/${username}"
+    elif [[ -f "${USER_DB}/${protocol}/expired/${username}" ]]; then
+        user_file="${USER_DB}/${protocol}/expired/${username}"
     else
         msg_fail "User '${username}' not found"
         return 1
@@ -155,11 +225,6 @@ delete_vless_user() {
         return 1
     fi
 
-    # Get UUID before deleting
-    local uuid
-    uuid=$(grep "^UUID=" "${user_file}" | cut -d= -f2)
-
-    # Remove from Xray config
     local tmp_config
     tmp_config=$(mktemp)
     jq --arg email "${username}@freeflow" '
@@ -179,31 +244,30 @@ delete_vless_user() {
         rm -f "${tmp_config}"
     fi
 
-    # Remove user files
     rm -f "${user_file}"
     rm -f "${DATA_DIR}/usage/${username}"
 
     msg_ok "User '${username}' permanently deleted"
 }
 
+delete_vless_user() { delete_protocol_user "vless"; }
+delete_vmess_user() { delete_protocol_user "vmess"; }
+delete_trojan_user() { delete_protocol_user "trojan"; }
+
 # --- Expire User (block but don't delete) ---
-expire_vless_user() {
-    local username="$1"
+expire_protocol_user() {
+    local protocol="$1"
+    local username="$2"
 
     if [[ -z "${username}" ]]; then
         read -rp " Username to expire: " username
     fi
 
-    if [[ ! -f "${USER_DB}/vless/active/${username}" ]]; then
-        msg_warn "User '${username}' not found in active users"
+    if [[ ! -f "${USER_DB}/${protocol}/active/${username}" ]]; then
+        msg_warn "User '${username}' not found in active ${protocol} users"
         return 1
     fi
 
-    # Get UUID
-    local uuid
-    uuid=$(grep "^UUID=" "${USER_DB}/vless/active/${username}" | cut -d= -f2)
-
-    # Remove from Xray config (block connection)
     local tmp_config
     tmp_config=$(mktemp)
     jq --arg email "${username}@freeflow" '
@@ -223,20 +287,27 @@ expire_vless_user() {
         rm -f "${tmp_config}"
     fi
 
-    # Move to expired (keep the data!)
-    sed -i 's/^STATUS=active/STATUS=expired/' "${USER_DB}/vless/active/${username}"
-    mv "${USER_DB}/vless/active/${username}" "${USER_DB}/vless/expired/${username}"
+    sed -i 's/^STATUS=active/STATUS=expired/' "${USER_DB}/${protocol}/active/${username}"
+    mv "${USER_DB}/${protocol}/active/${username}" "${USER_DB}/${protocol}/expired/${username}"
 
     msg_ok "User '${username}' expired (data preserved, connection blocked)"
 }
 
+expire_vless_user() { expire_protocol_user "vless" "$1"; }
+expire_vmess_user() { expire_protocol_user "vmess" "$1"; }
+expire_trojan_user() { expire_protocol_user "trojan" "$1"; }
+
 # --- Reactivate Expired User ---
-reactivate_vless_user() {
-    print_section "Reactivate Expired User"
+reactivate_protocol_user() {
+    local protocol="$1"
+    local display_name
+    display_name=$(echo "${protocol}" | tr '[:lower:]' '[:upper:]')
+
+    print_section "Reactivate Expired ${display_name} User"
 
     read -rp " Username to reactivate: " username
-    if [[ ! -f "${USER_DB}/vless/expired/${username}" ]]; then
-        msg_fail "User '${username}' not found in expired users"
+    if [[ ! -f "${USER_DB}/${protocol}/expired/${username}" ]]; then
+        msg_fail "User '${username}' not found in expired ${protocol} users"
         return 1
     fi
 
@@ -245,29 +316,53 @@ reactivate_vless_user() {
     local expiry
     expiry=$(get_expiry_date "${days}")
 
-    # Get UUID from saved data
     local uuid
-    uuid=$(grep "^UUID=" "${USER_DB}/vless/expired/${username}" | cut -d= -f2)
+    uuid=$(grep "^UUID=" "${USER_DB}/${protocol}/expired/${username}" | cut -d= -f2)
 
-    # Update expiry and status
-    sed -i "s/^EXPIRY=.*/EXPIRY=${expiry}/" "${USER_DB}/vless/expired/${username}"
-    sed -i 's/^STATUS=expired/STATUS=active/' "${USER_DB}/vless/expired/${username}"
+    sed -i "s/^EXPIRY=.*/EXPIRY=${expiry}/" "${USER_DB}/${protocol}/expired/${username}"
+    sed -i 's/^STATUS=expired/STATUS=active/' "${USER_DB}/${protocol}/expired/${username}"
+    mv "${USER_DB}/${protocol}/expired/${username}" "${USER_DB}/${protocol}/active/${username}"
 
-    # Move back to active
-    mv "${USER_DB}/vless/expired/${username}" "${USER_DB}/vless/active/${username}"
-
-    # Re-add to Xray config with same UUID
     local tmp_config
     tmp_config=$(mktemp)
-    jq --arg uuid "${uuid}" --arg email "${username}@freeflow" '
-        .inbounds |= map(
-            if .tag == "vless-ws" or .tag == "vless-httpupgrade" or .tag == "vless-xhttp" then
-                .settings.clients += [{"id": $uuid, "email": $email}]
-            else
-                .
-            end
-        )
-    ' "${XRAY_CONFIG}" > "${tmp_config}"
+
+    case "${protocol}" in
+        vless)
+            jq --arg uuid "${uuid}" --arg email "${username}@freeflow" '
+                .inbounds |= map(
+                    if (.tag == "vless-ws" or .tag == "vless-httpupgrade" or .tag == "vless-xhttp" or .tag == "vless-grpc") then
+                        .settings.clients += [{"id": $uuid, "email": $email}]
+                    elif .tag == "vless-reality" then
+                        .settings.clients += [{"id": $uuid, "flow": "xtls-rprx-vision", "email": $email}]
+                    else
+                        .
+                    end
+                )
+            ' "${XRAY_CONFIG}" > "${tmp_config}"
+            ;;
+        vmess)
+            jq --arg uuid "${uuid}" --arg email "${username}@freeflow" '
+                .inbounds |= map(
+                    if .tag == "vmess-ws" or .tag == "vmess-grpc" then
+                        .settings.clients += [{"id": $uuid, "alterId": 0, "email": $email}]
+                    else
+                        .
+                    end
+                )
+            ' "${XRAY_CONFIG}" > "${tmp_config}"
+            ;;
+        trojan)
+            jq --arg password "${uuid}" --arg email "${username}@freeflow" '
+                .inbounds |= map(
+                    if .tag == "trojan-ws" or .tag == "trojan-grpc" or .tag == "trojan-tcp" then
+                        .settings.clients += [{"password": $password, "email": $email}]
+                    else
+                        .
+                    end
+                )
+            ' "${XRAY_CONFIG}" > "${tmp_config}"
+            ;;
+    esac
 
     if [[ -s "${tmp_config}" ]]; then
         mv "${tmp_config}" "${XRAY_CONFIG}"
@@ -279,13 +374,21 @@ reactivate_vless_user() {
     msg_ok "User '${username}' reactivated until ${expiry} (same UUID: ${uuid})"
 }
 
+reactivate_vless_user() { reactivate_protocol_user "vless"; }
+reactivate_vmess_user() { reactivate_protocol_user "vmess"; }
+reactivate_trojan_user() { reactivate_protocol_user "trojan"; }
+
 # --- Renew User ---
-renew_vless_user() {
-    print_section "Renew VLESS User"
+renew_protocol_user() {
+    local protocol="$1"
+    local display_name
+    display_name=$(echo "${protocol}" | tr '[:lower:]' '[:upper:]')
+
+    print_section "Renew ${display_name} User"
 
     read -rp " Username to renew: " username
-    if [[ ! -f "${USER_DB}/vless/active/${username}" ]]; then
-        msg_fail "User '${username}' not found in active users"
+    if [[ ! -f "${USER_DB}/${protocol}/active/${username}" ]]; then
+        msg_fail "User '${username}' not found in active ${protocol} users"
         msg_info "Use reactivate for expired users"
         return 1
     fi
@@ -294,25 +397,33 @@ renew_vless_user() {
     days="${days:-30}"
 
     local current_expiry
-    current_expiry=$(grep "^EXPIRY=" "${USER_DB}/vless/active/${username}" | cut -d= -f2)
+    current_expiry=$(grep "^EXPIRY=" "${USER_DB}/${protocol}/active/${username}" | cut -d= -f2)
 
     local new_expiry
     new_expiry=$(date -d "${current_expiry} + ${days} days" +"%Y-%m-%d")
 
-    sed -i "s/^EXPIRY=.*/EXPIRY=${new_expiry}/" "${USER_DB}/vless/active/${username}"
+    sed -i "s/^EXPIRY=.*/EXPIRY=${new_expiry}/" "${USER_DB}/${protocol}/active/${username}"
 
     msg_ok "User '${username}' renewed until ${new_expiry}"
 }
 
+renew_vless_user() { renew_protocol_user "vless"; }
+renew_vmess_user() { renew_protocol_user "vmess"; }
+renew_trojan_user() { renew_protocol_user "trojan"; }
+
 # --- List Users ---
-list_active_users() {
-    print_section "Active VLESS Users"
+list_protocol_active() {
+    local protocol="$1"
+    local display_name
+    display_name=$(echo "${protocol}" | tr '[:lower:]' '[:upper:]')
+
+    print_section "Active ${display_name} Users"
 
     local count=0
     echo -e " ${BOLD}No  Username         UUID                                  Expiry      IPs${NC}"
     print_line
 
-    for f in "${USER_DB}/vless/active/"*; do
+    for f in "${USER_DB}/${protocol}/active/"*; do
         [[ -f "${f}" ]] || continue
         count=$((count + 1))
         local uname uuid expiry max_ip
@@ -324,20 +435,24 @@ list_active_users() {
     done
 
     if [[ "${count}" -eq 0 ]]; then
-        echo -e " ${YELLOW}No active users${NC}"
+        echo -e " ${YELLOW}No active ${protocol} users${NC}"
     fi
     echo ""
     echo -e " Total active: ${GREEN}${count}${NC}"
 }
 
-list_expired_users() {
-    print_section "Expired VLESS Users"
+list_protocol_expired() {
+    local protocol="$1"
+    local display_name
+    display_name=$(echo "${protocol}" | tr '[:lower:]' '[:upper:]')
+
+    print_section "Expired ${display_name} Users"
 
     local count=0
     echo -e " ${BOLD}No  Username         UUID                                  Expired${NC}"
     print_line
 
-    for f in "${USER_DB}/vless/expired/"*; do
+    for f in "${USER_DB}/${protocol}/expired/"*; do
         [[ -f "${f}" ]] || continue
         count=$((count + 1))
         local uname uuid expiry
@@ -348,28 +463,165 @@ list_expired_users() {
     done
 
     if [[ "${count}" -eq 0 ]]; then
-        echo -e " ${YELLOW}No expired users${NC}"
+        echo -e " ${YELLOW}No expired ${protocol} users${NC}"
     fi
     echo ""
     echo -e " Total expired: ${RED}${count}${NC}"
 }
 
+# Legacy convenience wrappers
+list_active_users() { list_protocol_active "vless"; }
+list_expired_users() { list_protocol_expired "vless"; }
+
 list_all_users() {
-    list_active_users
-    list_expired_users
+    for proto in vless vmess trojan; do
+        list_protocol_active "${proto}"
+        list_protocol_expired "${proto}"
+    done
+}
+
+# --- Trial Account Generator ---
+create_trial_account() {
+    local protocol="$1"
+    protocol="${protocol:-vless}"
+    local display_name
+    display_name=$(echo "${protocol}" | tr '[:lower:]' '[:upper:]')
+
+    print_section "Create ${display_name} Trial Account"
+
+    read -rp " Trial duration in hours (default: 1): " hours
+    hours="${hours:-1}"
+
+    local trial_name="trial_$(date +%s | tail -c 7)"
+    local uuid
+    uuid=$(generate_uuid)
+
+    # Compute expiry: use minutes for short trials
+    local expiry
+    local minutes=$((hours * 60))
+    expiry=$(date -d "+${minutes} minutes" +"%Y-%m-%d")
+
+    cat > "${USER_DB}/${protocol}/active/${trial_name}" <<EOF
+USERNAME=${trial_name}
+UUID=${uuid}
+PROTOCOL=${protocol}
+CREATED=$(date +"%Y-%m-%d %H:%M")
+EXPIRY=${expiry}
+MAX_IP=1
+DATA_LIMIT_GB=1
+STATUS=active
+TRIAL=true
+TRIAL_HOURS=${hours}
+EOF
+
+    # Add to xray config
+    local tmp_config
+    tmp_config=$(mktemp)
+    case "${protocol}" in
+        vless)
+            jq --arg uuid "${uuid}" --arg email "${trial_name}@freeflow" '
+                .inbounds |= map(
+                    if (.tag == "vless-ws" or .tag == "vless-httpupgrade" or .tag == "vless-xhttp" or .tag == "vless-grpc") then
+                        .settings.clients += [{"id": $uuid, "email": $email}]
+                    elif .tag == "vless-reality" then
+                        .settings.clients += [{"id": $uuid, "flow": "xtls-rprx-vision", "email": $email}]
+                    else . end
+                )
+            ' "${XRAY_CONFIG}" > "${tmp_config}" ;;
+        vmess)
+            jq --arg uuid "${uuid}" --arg email "${trial_name}@freeflow" '
+                .inbounds |= map(
+                    if .tag == "vmess-ws" or .tag == "vmess-grpc" then
+                        .settings.clients += [{"id": $uuid, "alterId": 0, "email": $email}]
+                    else . end
+                )
+            ' "${XRAY_CONFIG}" > "${tmp_config}" ;;
+        trojan)
+            jq --arg password "${uuid}" --arg email "${trial_name}@freeflow" '
+                .inbounds |= map(
+                    if .tag == "trojan-ws" or .tag == "trojan-grpc" or .tag == "trojan-tcp" then
+                        .settings.clients += [{"password": $password, "email": $email}]
+                    else . end
+                )
+            ' "${XRAY_CONFIG}" > "${tmp_config}" ;;
+    esac
+
+    if [[ -s "${tmp_config}" ]]; then
+        mv "${tmp_config}" "${XRAY_CONFIG}"
+        restart_service xray
+    else
+        rm -f "${tmp_config}"
+    fi
+
+    echo "0" > "${DATA_DIR}/usage/${trial_name}"
+
+    local domain
+    domain=$(get_domain)
+
+    print_section "Trial Account Created"
+    echo -e " ${GREEN}Username${NC}  : ${trial_name}"
+    echo -e " ${GREEN}Protocol${NC}  : ${display_name}"
+    echo -e " ${GREEN}UUID${NC}      : ${uuid}"
+    echo -e " ${GREEN}Duration${NC}  : ${hours} hour(s)"
+    echo -e " ${GREEN}Data Limit${NC}: 1 GB"
+    echo -e " ${GREEN}Domain${NC}    : ${domain}"
+    print_line
+}
+
+# --- Check Online/Login Users ---
+check_login_users() {
+    print_section "Online/Connected Users"
+
+    local access_log="/var/log/xray/access.log"
+    if [[ ! -f "${access_log}" ]]; then
+        msg_warn "No access log found"
+        return
+    fi
+
+    echo -e " ${BOLD}Currently connected users (last 5 min):${NC}"
+    print_line
+
+    local count=0
+    local cutoff
+    cutoff=$(date -d "5 minutes ago" +"%Y/%m/%d %H:%M" 2>/dev/null)
+
+    for proto in vless vmess trojan; do
+        for f in "${USER_DB}/${proto}/active/"*; do
+            [[ -f "${f}" ]] || continue
+            local uname
+            uname=$(grep "^USERNAME=" "${f}" | cut -d= -f2)
+            local email="${uname}@freeflow"
+
+            if grep -q "${email}" "${access_log}" 2>/dev/null; then
+                local last_seen
+                last_seen=$(grep "${email}" "${access_log}" | tail -1 | awk '{print $1, $2}')
+                count=$((count + 1))
+                echo -e "   ${GREEN}●${NC} ${uname} (${proto}) — last: ${last_seen}"
+            fi
+        done
+    done
+
+    if [[ "${count}" -eq 0 ]]; then
+        echo -e " ${YELLOW}No users currently connected${NC}"
+    fi
+    echo ""
+    echo -e " Total online: ${GREEN}${count}${NC}"
+    print_line
 }
 
 # --- Auto Expire Check (run via cron) ---
 check_expired_users() {
-    for f in "${USER_DB}/vless/active/"*; do
-        [[ -f "${f}" ]] || continue
-        local uname expiry
-        uname=$(grep "^USERNAME=" "${f}" | cut -d= -f2)
-        expiry=$(grep "^EXPIRY=" "${f}" | cut -d= -f2)
-        if is_expired "${expiry}"; then
-            expire_vless_user "${uname}"
-            echo "[$(date)] User '${uname}' auto-expired" >> "${LOG_DIR}/expiry.log"
-        fi
+    for proto in vless vmess trojan; do
+        for f in "${USER_DB}/${proto}/active/"*; do
+            [[ -f "${f}" ]] || continue
+            local uname expiry
+            uname=$(grep "^USERNAME=" "${f}" | cut -d= -f2)
+            expiry=$(grep "^EXPIRY=" "${f}" | cut -d= -f2)
+            if is_expired "${expiry}"; then
+                expire_protocol_user "${proto}" "${uname}"
+                echo "[$(date)] User '${uname}' (${proto}) auto-expired" >> "${LOG_DIR}/expiry.log"
+            fi
+        done
     done
 }
 
@@ -378,13 +630,19 @@ if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
     check_root
     case "${1}" in
         add) add_vless_user ;;
+        add-vmess) add_vmess_user ;;
+        add-trojan) add_trojan_user ;;
         delete) delete_vless_user ;;
+        delete-vmess) delete_vmess_user ;;
+        delete-trojan) delete_trojan_user ;;
         renew) renew_vless_user ;;
         reactivate) reactivate_vless_user ;;
         list) list_all_users ;;
-        list-active) list_active_users ;;
-        list-expired) list_expired_users ;;
+        list-active) list_protocol_active "${2:-vless}" ;;
+        list-expired) list_protocol_expired "${2:-vless}" ;;
         check-expiry) check_expired_users ;;
-        *) echo "Usage: $0 {add|delete|renew|reactivate|list|list-active|list-expired|check-expiry}" ;;
+        trial) create_trial_account "${2:-vless}" ;;
+        online) check_login_users ;;
+        *) echo "Usage: $0 {add|add-vmess|add-trojan|delete|renew|reactivate|list|list-active|list-expired|check-expiry|trial|online}" ;;
     esac
 fi

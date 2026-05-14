@@ -63,7 +63,49 @@
 - [x] Conversation handler for multi-step commands
 - [x] Authorized access (restricted to configured chat ID)
 
-## Phase 8: Quality & Testing — IN PROGRESS
+## Phase 8: v2.0 — Multi-Protocol & Tools — DONE
+- [x] OS support updated: Ubuntu 18.04-26.04, Debian 9-13
+- [x] Vinstechmy repos analyzed (25 repos)
+- [x] VMESS protocol (WebSocket + gRPC) — full user management
+- [x] Trojan protocol (WebSocket + gRPC + TCP TLS) — full user management
+- [x] gRPC transport for VLESS, VMESS, Trojan
+- [x] VLESS XTLS Reality (TCP direct on port 443, xtls-rprx-vision flow)
+- [x] Trojan TCP TLS (via Reality fallback)
+- [x] User management extended for all 3 protocols
+- [x] Trial Account Generator (auto-expire temporary accounts for each protocol)
+- [x] Check Online Users (access.log analysis)
+- [x] Ads Blocker (DNS-level, StevenBlack hosts list)
+- [x] Netflix Region Checker (+ Disney+, YouTube Premium)
+- [x] YAML Config Generator (Clash/Mihomo format for all protocols)
+- [x] WSS Converter / Share Link Generator (vless://, vmess://, trojan://)
+- [x] DNS Changer (Google, Cloudflare, OpenDNS, Quad9, custom)
+- [x] RAM Monitor (free/used + per-service breakdown)
+- [x] Auto Clear Log (scheduled log cleanup, cron)
+- [x] Telegram Auto Backup (tar.gz backup sent to Telegram, cron)
+- [x] Menu expanded from 26 to 46 options
+- [x] Xray config: 11 inbounds (4 VLESS + 2 VMESS + 3 Trojan + Reality + API)
+- [x] Nginx config updated for all protocol routing
+- [x] Telegram bot updated for all protocols + tools
+- [x] Usage tracker updated for multi-protocol
+- [x] Version bumped to 2.0.0
+- [x] All scripts pass shellcheck (0 errors)
+
+## Xray Inbound Port Mapping
+| Port | Protocol | Transport |
+|------|----------|-----------|
+| 10001 | VLESS | WebSocket |
+| 10002 | VLESS | HttpUpgrade |
+| 10003 | VLESS | XHTTP |
+| 10004 | VLESS | gRPC |
+| 10005 | VMESS | WebSocket |
+| 10006 | VMESS | gRPC |
+| 10007 | Trojan | WebSocket |
+| 10008 | Trojan | gRPC |
+| 10009 | VLESS Reality | TCP XTLS (direct, not via Nginx) |
+| 10010 | Trojan TCP | TLS (via Reality fallback) |
+| 10085 | API | Stats query |
+
+## Phase 9: Quality & Testing — IN PROGRESS
 - [x] shellcheck validation (0 errors)
 - [ ] Live VPS testing
 - [ ] Stress testing multiport connections
@@ -74,3 +116,6 @@
 | 2026-05-14 | Project initialized, architecture decided (Nginx + Xray) |
 | 2026-05-14 | Phase 1-7 completed: Full autoscript VPN with all features |
 | 2026-05-14 | All shell scripts pass shellcheck (0 errors) |
+| 2026-05-14 | v2.0: Added VMESS, Trojan, gRPC, XTLS Reality + 14 new features |
+| 2026-05-14 | v2.0: Menu expanded to 46 options, Telegram bot updated |
+| 2026-05-14 | v2.0: OS support extended to Debian 13 and Ubuntu 26.04 |

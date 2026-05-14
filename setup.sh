@@ -3,8 +3,9 @@
 #  FreeFlow Auto Script VPN — All In One
 #  https://github.com/zizwanphgziz/freeflowasvpn
 # ============================================================
-# Supported: Ubuntu 18.04+, Debian 9+
+# Supported: Ubuntu 18.04-26.04, Debian 9-13
 # Architecture: Nginx (reverse proxy) + Xray Core
+# Protocols: VLESS, VMESS, Trojan (WS/gRPC/XTLS Reality)
 # ============================================================
 
 set -e
@@ -15,7 +16,7 @@ REPO_URL="https://github.com/${REPO_OWNER}/${REPO_NAME}"
 REPO_BRANCH="init-branch"
 REPO_RAW="https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/${REPO_BRANCH}"
 INSTALL_DIR="/usr/local/lib/freeflow"
-VERSION="1.0.0"
+VERSION="2.0.0"
 
 # --- Colors ---
 RED='\033[0;31m'
@@ -33,6 +34,7 @@ echo "╔═══════════════════════�
 echo "║                                                      ║"
 echo "║     FreeFlow Auto Script VPN — All In One            ║"
 echo "║     Version: ${VERSION}                                   ║"
+echo "║     VLESS · VMESS · Trojan · SSH WS                  ║"
 echo "║                                                      ║"
 echo "╚══════════════════════════════════════════════════════╝"
 echo -e "${NC}"
@@ -58,7 +60,7 @@ case "${OS_NAME}" in
     ubuntu|debian) ;;
     *)
         echo -e " ${RED}[FAIL]${NC} Unsupported OS: ${OS_NAME}"
-        echo -e " ${BLUE}[INFO]${NC} Supported: Ubuntu 18.04+, Debian 9+"
+        echo -e " ${BLUE}[INFO]${NC} Supported: Ubuntu 18.04-26.04, Debian 9-13"
         exit 1
         ;;
 esac
@@ -117,7 +119,7 @@ else
 fi
 
 # Make scripts executable
-chmod +x "${INSTALL_DIR}/scripts/"*/*.sh 2>/dev/null
+find "${INSTALL_DIR}/scripts" -name "*.sh" -exec chmod +x {} \;
 chmod +x "${INSTALL_DIR}/setup.sh" 2>/dev/null
 
 # Source common functions
@@ -169,10 +171,17 @@ if [[ "${install_ssh}" =~ ^[yY] ]]; then
 fi
 
 # --- Optional: WARP ---
-read -rp " Install Cloudflare WARP? [y/N]: " install_warp
-if [[ "${install_warp}" =~ ^[yY] ]]; then
+read -rp " Install Cloudflare WARP? [y/N]: " install_warp_choice
+if [[ "${install_warp_choice}" =~ ^[yY] ]]; then
     source "${INSTALL_DIR}/scripts/warp/install_warp.sh"
     install_warp
+fi
+
+# --- Optional: Ads Blocker ---
+read -rp " Install Ads Blocker? [y/N]: " install_ads
+if [[ "${install_ads}" =~ ^[yY] ]]; then
+    source "${INSTALL_DIR}/scripts/tools/ads_blocker.sh"
+    install_ads_blocker
 fi
 
 # --- Optional: Telegram Bot ---
@@ -209,6 +218,15 @@ if [[ ! "${auto_reboot}" =~ ^[nN] ]]; then
     echo -e " ${GREEN}[OK]${NC} Auto reboot set to 5:00 AM daily"
 fi
 
+# --- Auto Clear Log ---
+read -rp " Enable auto log clear (daily 3 AM)? [Y/n]: " auto_log
+if [[ ! "${auto_log}" =~ ^[nN] ]]; then
+    (crontab -l 2>/dev/null; echo "0 3 * * * /bin/bash ${INSTALL_DIR}/scripts/tools/auto_clear_log.sh clear >> /var/log/freeflow/autoclear.log 2>&1") | crontab -
+    mkdir -p "${CONFIG_DIR}/modules"
+    touch "${CONFIG_DIR}/modules/auto_clear_log"
+    echo -e " ${GREEN}[OK]${NC} Auto log clear enabled (daily at 3 AM)"
+fi
+
 # --- Create Menu Command ---
 cp -f "${INSTALL_DIR}/scripts/menu/menu.sh" /usr/local/bin/freeflow
 chmod +x /usr/local/bin/freeflow
@@ -223,26 +241,30 @@ echo -e "${CYAN}"
 echo "╔══════════════════════════════════════════════════════╗"
 echo "║                                                      ║"
 echo "║   FreeFlow ASVPN — Installation Complete!            ║"
+echo "║   Version: ${VERSION}                                     ║"
 echo "║                                                      ║"
 echo "╚══════════════════════════════════════════════════════╝"
 echo -e "${NC}"
 echo ""
 echo -e " ${GREEN}[OK]${NC} All services installed and running"
 echo ""
-echo -e " ${BOLD}Service & Port Info${NC}"
+echo -e " ${BOLD}Protocols & Ports${NC}"
 echo -e " ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo -e "  Nginx             : 80, 443 (+ multiport)"
-echo -e "  VLESS WS (TLS)    : 443, 8443, 2083, 2087"
-echo -e "  VLESS WS (nonTLS) : 80, 8080, 8880, 2086"
-echo -e "  VLESS HttpUpgrade : Same ports as above"
-echo -e "  VLESS XHTTP       : Same ports as above"
+echo -e "  VLESS WS/HU/XHTTP : TLS=443,8443,2083,2087 | nonTLS=80,8080,8880,2086"
+echo -e "  VLESS gRPC        : TLS=443,8443,2083,2087 | nonTLS=80,8080,8880,2086"
+echo -e "  VLESS Reality     : port=443 (XTLS direct)"
+echo -e "  VMESS WS          : TLS=443,8443,2083,2087 | nonTLS=80,8080,8880,2086"
+echo -e "  VMESS gRPC        : TLS=443,8443,2083,2087 | nonTLS=80,8080,8880,2086"
+echo -e "  Trojan WS         : TLS=443,8443,2083,2087 | nonTLS=80,8080,8880,2086"
+echo -e "  Trojan gRPC       : TLS=443,8443,2083,2087 | nonTLS=80,8080,8880,2086"
+echo -e "  Trojan TCP        : port=443 (via Reality fallback)"
 if [[ -f "${CONFIG_DIR}/modules/ssh_ws_installed" ]]; then
     echo -e "  SSH WebSocket      : via Nginx /ssh path"
 fi
 echo ""
 echo -e " ${BOLD}Commands${NC}"
 echo -e " ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo -e "  ${GREEN}freeflow${NC}  — Open main menu"
+echo -e "  ${GREEN}freeflow${NC}  — Open main menu (46 options)"
 echo -e "  ${GREEN}menu${NC}      — Same as above"
 echo ""
 echo -e " ${YELLOW}Please reboot your VPS to complete setup${NC}"

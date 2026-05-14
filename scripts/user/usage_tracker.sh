@@ -1,6 +1,7 @@
 #!/bin/bash
 # ============================================================
 # FreeFlow ASVPN - Per-User Data Usage Tracker
+# Supports: VLESS, VMESS, Trojan protocols
 # ============================================================
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -36,42 +37,44 @@ format_bytes() {
     fi
 }
 
-# --- Record usage for all users ---
+# --- Record usage for all users (all protocols) ---
 record_usage() {
     mkdir -p "${USAGE_DIR}"
 
-    for f in "${USER_DB}/vless/active/"*; do
-        [[ -f "${f}" ]] || continue
+    for proto in vless vmess trojan; do
+        for f in "${USER_DB}/${proto}/active/"*; do
+            [[ -f "${f}" ]] || continue
 
-        local username
-        username=$(grep "^USERNAME=" "${f}" | cut -d= -f2)
-        local email="${username}@freeflow"
+            local username
+            username=$(grep "^USERNAME=" "${f}" | cut -d= -f2)
+            local email="${username}@freeflow"
 
-        local up down total
-        up=$(query_user_stats "${email}" "uplink")
-        down=$(query_user_stats "${email}" "downlink")
-        total=$((up + down))
+            local up down total
+            up=$(query_user_stats "${email}" "uplink")
+            down=$(query_user_stats "${email}" "downlink")
+            total=$((up + down))
 
-        # Accumulate to stored usage
-        local stored
-        stored=$(cat "${USAGE_DIR}/${username}" 2>/dev/null || echo "0")
-        local new_total=$((stored + total))
-        echo "${new_total}" > "${USAGE_DIR}/${username}"
+            # Accumulate to stored usage
+            local stored
+            stored=$(cat "${USAGE_DIR}/${username}" 2>/dev/null || echo "0")
+            local new_total=$((stored + total))
+            echo "${new_total}" > "${USAGE_DIR}/${username}"
 
-        # Log entry
-        echo "[$(date +%Y-%m-%d\ %H:%M)] ${username}: up=$(format_bytes ${up}) down=$(format_bytes ${down}) session_total=$(format_bytes ${total}) cumulative=$(format_bytes ${new_total})" >> "${USAGE_LOG}"
+            # Log entry
+            echo "[$(date +%Y-%m-%d\ %H:%M)] ${proto}:${username}: up=$(format_bytes ${up}) down=$(format_bytes ${down}) session_total=$(format_bytes ${total}) cumulative=$(format_bytes ${new_total})" >> "${USAGE_LOG}"
 
-        # Check data limit
-        local data_limit
-        data_limit=$(grep "^DATA_LIMIT_GB=" "${f}" | cut -d= -f2)
-        if [[ "${data_limit}" -gt 0 ]] 2>/dev/null; then
-            local limit_bytes=$((data_limit * 1073741824))
-            if [[ "${new_total}" -ge "${limit_bytes}" ]]; then
-                echo "[$(date)] User '${username}' exceeded data limit (${data_limit}GB)" >> "${LOG_DIR}/expiry.log"
-                source "${SCRIPT_DIR}/manage_user.sh"
-                expire_vless_user "${username}"
+            # Check data limit
+            local data_limit
+            data_limit=$(grep "^DATA_LIMIT_GB=" "${f}" | cut -d= -f2)
+            if [[ "${data_limit}" -gt 0 ]] 2>/dev/null; then
+                local limit_bytes=$((data_limit * 1073741824))
+                if [[ "${new_total}" -ge "${limit_bytes}" ]]; then
+                    echo "[$(date)] User '${username}' (${proto}) exceeded data limit (${data_limit}GB)" >> "${LOG_DIR}/expiry.log"
+                    source "${SCRIPT_DIR}/manage_user.sh"
+                    expire_protocol_user "${proto}" "${username}"
+                fi
             fi
-        fi
+        done
     done
 
     # Reset Xray stats counters after recording
@@ -80,68 +83,67 @@ record_usage() {
 
 # --- Display usage for all users ---
 show_usage() {
-    print_section "User Data Usage"
+    print_section "User Data Usage (All Protocols)"
 
-    echo -e " ${BOLD}No  Username         Upload        Download      Total         Limit${NC}"
+    echo -e " ${BOLD}No  Protocol  Username         Upload        Download      Total         Limit${NC}"
     print_line
 
     local count=0
 
-    # Active users
-    for f in "${USER_DB}/vless/active/"*; do
-        [[ -f "${f}" ]] || continue
-        count=$((count + 1))
+    for proto in vless vmess trojan; do
+        # Active users
+        for f in "${USER_DB}/${proto}/active/"*; do
+            [[ -f "${f}" ]] || continue
+            count=$((count + 1))
 
-        local username email up down total_stored data_limit
-        username=$(grep "^USERNAME=" "${f}" | cut -d= -f2)
-        email="${username}@freeflow"
+            local username email up down total_stored data_limit
+            username=$(grep "^USERNAME=" "${f}" | cut -d= -f2)
+            email="${username}@freeflow"
 
-        # Current session stats
-        up=$(query_user_stats "${email}" "uplink")
-        down=$(query_user_stats "${email}" "downlink")
+            up=$(query_user_stats "${email}" "uplink")
+            down=$(query_user_stats "${email}" "downlink")
+            total_stored=$(cat "${USAGE_DIR}/${username}" 2>/dev/null || echo "0")
+            local cumulative=$((total_stored + up + down))
 
-        # Cumulative stored
-        total_stored=$(cat "${USAGE_DIR}/${username}" 2>/dev/null || echo "0")
-        local cumulative=$((total_stored + up + down))
+            data_limit=$(grep "^DATA_LIMIT_GB=" "${f}" | cut -d= -f2)
+            local limit_display
+            if [[ "${data_limit}" -eq 0 ]] 2>/dev/null; then
+                limit_display="Unlimited"
+            else
+                limit_display="${data_limit} GB"
+            fi
 
-        data_limit=$(grep "^DATA_LIMIT_GB=" "${f}" | cut -d= -f2)
-        local limit_display
-        if [[ "${data_limit}" -eq 0 ]] 2>/dev/null; then
-            limit_display="Unlimited"
-        else
-            limit_display="${data_limit} GB"
-        fi
+            printf " %-3s %-9s %-16s %-13s %-13s %-13s %s\n" \
+                "${count}" "${proto}" "${username}" \
+                "$(format_bytes "${up}")" \
+                "$(format_bytes "${down}")" \
+                "$(format_bytes "${cumulative}")" \
+                "${limit_display}"
+        done
 
-        printf " %-3s %-16s %-13s %-13s %-13s %s\n" \
-            "${count}" "${username}" \
-            "$(format_bytes "${up}")" \
-            "$(format_bytes "${down}")" \
-            "$(format_bytes "${cumulative}")" \
-            "${limit_display}"
-    done
+        # Expired users
+        for f in "${USER_DB}/${proto}/expired/"*; do
+            [[ -f "${f}" ]] || continue
+            count=$((count + 1))
 
-    # Expired users
-    for f in "${USER_DB}/vless/expired/"*; do
-        [[ -f "${f}" ]] || continue
-        count=$((count + 1))
+            local username total_stored data_limit
+            username=$(grep "^USERNAME=" "${f}" | cut -d= -f2)
+            total_stored=$(cat "${USAGE_DIR}/${username}" 2>/dev/null || echo "0")
 
-        local username total_stored data_limit
-        username=$(grep "^USERNAME=" "${f}" | cut -d= -f2)
-        total_stored=$(cat "${USAGE_DIR}/${username}" 2>/dev/null || echo "0")
+            data_limit=$(grep "^DATA_LIMIT_GB=" "${f}" | cut -d= -f2)
+            local limit_display
+            if [[ "${data_limit}" -eq 0 ]] 2>/dev/null; then
+                limit_display="Unlimited"
+            else
+                limit_display="${data_limit} GB"
+            fi
 
-        data_limit=$(grep "^DATA_LIMIT_GB=" "${f}" | cut -d= -f2)
-        local limit_display
-        if [[ "${data_limit}" -eq 0 ]] 2>/dev/null; then
-            limit_display="Unlimited"
-        else
-            limit_display="${data_limit} GB"
-        fi
-
-        printf " %-3s ${RED}%-16s${NC} %-13s %-13s %-13s %s\n" \
-            "${count}" "${username} [EXP]" \
-            "-" "-" \
-            "$(format_bytes "${total_stored}")" \
-            "${limit_display}"
+            printf " %-3s %-9s ${RED}%-16s${NC} %-13s %-13s %-13s %s\n" \
+                "${count}" "${proto}" "${username} [EXP]" \
+                "-" "-" \
+                "$(format_bytes "${total_stored}")" \
+                "${limit_display}"
+        done
     done
 
     if [[ "${count}" -eq 0 ]]; then
@@ -157,12 +159,20 @@ show_user_usage() {
         read -rp " Username: " username
     fi
 
-    local user_file=""
-    if [[ -f "${USER_DB}/vless/active/${username}" ]]; then
-        user_file="${USER_DB}/vless/active/${username}"
-    elif [[ -f "${USER_DB}/vless/expired/${username}" ]]; then
-        user_file="${USER_DB}/vless/expired/${username}"
-    else
+    local user_file="" user_proto=""
+    for proto in vless vmess trojan; do
+        if [[ -f "${USER_DB}/${proto}/active/${username}" ]]; then
+            user_file="${USER_DB}/${proto}/active/${username}"
+            user_proto="${proto}"
+            break
+        elif [[ -f "${USER_DB}/${proto}/expired/${username}" ]]; then
+            user_file="${USER_DB}/${proto}/expired/${username}"
+            user_proto="${proto}"
+            break
+        fi
+    done
+
+    if [[ -z "${user_file}" ]]; then
         msg_fail "User '${username}' not found"
         return 1
     fi
@@ -182,6 +192,7 @@ show_user_usage() {
 
     print_section "Usage: ${username}"
     echo -e " ${GREEN}Username${NC}    : ${username}"
+    echo -e " ${GREEN}Protocol${NC}    : ${user_proto^^}"
     echo -e " ${GREEN}UUID${NC}        : ${uuid}"
     echo -e " ${GREEN}Status${NC}      : ${status}"
     echo -e " ${GREEN}Expiry${NC}      : ${expiry}"

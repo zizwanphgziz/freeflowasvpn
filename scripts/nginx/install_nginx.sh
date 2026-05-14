@@ -1,6 +1,7 @@
 #!/bin/bash
 # ============================================================
 # FreeFlow ASVPN - Nginx Reverse Proxy Setup
+# Supports all protocol routes: VLESS, VMESS, Trojan (WS/gRPC)
 # ============================================================
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -72,10 +73,15 @@ generate_nginx_config() {
     local domain
     domain=$(get_domain)
 
-    # Load paths
+    # Load paths (defaults)
     local vless_ws_path="/"
     local vless_hu_path="/vless-hu"
     local vless_xhttp_path="/vless-xhttp"
+    local vless_grpc_sn="vless-grpc"
+    local vmess_ws_path="/vmess-ws"
+    local vmess_grpc_sn="vmess-grpc"
+    local trojan_ws_path="/trojan-ws"
+    local trojan_grpc_sn="trojan-grpc"
     local ssh_ws_path="/ssh"
 
     if [[ -f "${CONFIG_DIR}/paths.conf" ]]; then
@@ -138,10 +144,11 @@ http {
 }
 NGINXMAIN
 
-    # Generate site config with multiport support
+    # Generate site config with multiport and all protocols
     cat > "${NGINX_CONF}" <<NGINXEOF
 # ============================================
 # FreeFlow ASVPN — Nginx Reverse Proxy Config
+# Protocols: VLESS, VMESS, Trojan (WS + gRPC)
 # ============================================
 
 # --- Non-TLS Ports (HTTP) ---
@@ -196,6 +203,54 @@ server {
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header Host \$http_host;
     }
+
+    # --- VLESS gRPC (Non-TLS) ---
+    location /${vless_grpc_sn} {
+        grpc_pass grpc://127.0.0.1:10004;
+        grpc_set_header X-Real-IP \$remote_addr;
+    }
+
+    # --- VMESS WebSocket (Non-TLS) ---
+    location ${vmess_ws_path} {
+        if (\$http_upgrade != "Websocket") {
+            return 404;
+        }
+        proxy_redirect off;
+        proxy_pass http://127.0.0.1:10005;
+        proxy_http_version 1.1;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host \$http_host;
+    }
+
+    # --- VMESS gRPC (Non-TLS) ---
+    location /${vmess_grpc_sn} {
+        grpc_pass grpc://127.0.0.1:10006;
+        grpc_set_header X-Real-IP \$remote_addr;
+    }
+
+    # --- Trojan WebSocket (Non-TLS) ---
+    location ${trojan_ws_path} {
+        if (\$http_upgrade != "Websocket") {
+            return 404;
+        }
+        proxy_redirect off;
+        proxy_pass http://127.0.0.1:10007;
+        proxy_http_version 1.1;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host \$http_host;
+    }
+
+    # --- Trojan gRPC (Non-TLS) ---
+    location /${trojan_grpc_sn} {
+        grpc_pass grpc://127.0.0.1:10008;
+        grpc_set_header X-Real-IP \$remote_addr;
+    }
 ${ssh_ws_block}
 
     # --- Default: Decoy Page ---
@@ -207,8 +262,6 @@ ${ssh_ws_block}
 
 # --- TLS Ports (HTTPS) ---
 server {
-    listen 443 ssl;
-    listen [::]:443 ssl;
     listen 8443 ssl;
     listen [::]:8443 ssl;
     listen 2083 ssl;
@@ -262,6 +315,54 @@ server {
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header Host \$http_host;
+    }
+
+    # --- VLESS gRPC (TLS) ---
+    location /${vless_grpc_sn} {
+        grpc_pass grpc://127.0.0.1:10004;
+        grpc_set_header X-Real-IP \$remote_addr;
+    }
+
+    # --- VMESS WebSocket (TLS) ---
+    location ${vmess_ws_path} {
+        if (\$http_upgrade != "Websocket") {
+            return 404;
+        }
+        proxy_redirect off;
+        proxy_pass http://127.0.0.1:10005;
+        proxy_http_version 1.1;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host \$http_host;
+    }
+
+    # --- VMESS gRPC (TLS) ---
+    location /${vmess_grpc_sn} {
+        grpc_pass grpc://127.0.0.1:10006;
+        grpc_set_header X-Real-IP \$remote_addr;
+    }
+
+    # --- Trojan WebSocket (TLS) ---
+    location ${trojan_ws_path} {
+        if (\$http_upgrade != "Websocket") {
+            return 404;
+        }
+        proxy_redirect off;
+        proxy_pass http://127.0.0.1:10007;
+        proxy_http_version 1.1;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host \$http_host;
+    }
+
+    # --- Trojan gRPC (TLS) ---
+    location /${trojan_grpc_sn} {
+        grpc_pass grpc://127.0.0.1:10008;
+        grpc_set_header X-Real-IP \$remote_addr;
     }
 ${ssh_ws_block}
 
