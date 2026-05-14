@@ -60,7 +60,7 @@ Always Use HTTPS   : OFF
 
 ```bash
 apt update && apt install wget -y
-wget -qO setup.sh https://raw.githubusercontent.com/zizwanphgziz/freeflowasvpn/main/setup.sh
+wget -qO setup.sh https://raw.githubusercontent.com/zizwanphgziz/freeflowasvpn/init-branch/setup.sh
 chmod +x setup.sh
 ./setup.sh
 ```
