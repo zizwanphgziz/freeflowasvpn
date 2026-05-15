@@ -165,3 +165,4 @@
 | 2026-05-14 | Session 6: Switched SSL from certbot to acme.sh (ECC ec-256), removed self-signed fallback |
 || 2026-05-15 | Session 7: Bug #9: REPO_BRANCH pointed to v2.1 — fixed to v2.2 so fixes actually install |
 || 2026-05-15 | Session 7: Bug #10: WebSocket case-sensitivity — removed all if-checks from nginx proxy |
+|| 2026-05-15 | Session 7: Fresh install test — nginx/xray running, all ports listening, but VPN still not connecting |

@@ -279,3 +279,21 @@ chmod +x /root/.acme.sh/acme.sh
 - V2rayNG/Clash clients send `Upgrade: websocket` — lowercase 'w'
 - Case mismatch caused: VMESS/Trojan WS return 404, VLESS WS gets wrong path
 - Fixed: removed all `if` blocks — proxy_pass handles WebSocket upgrade natively via Upgrade/Connection headers
+
+### Ahmad's Test Result (Post Bug #9 + #10 Fix — Fresh Install)
+- Reinstalled on fresh VPS with latest code (REPO_BRANCH now correct)
+- **nginx -t**: syntax OK, test successful ✓
+- **Services**: Both nginx and xray are **active (running)** and **enabled** ✓
+- **Port listening** (ss -tlnp): All ports listening correctly:
+  - nginx: 80, 8080, 8880, 8443, 2083, 2086, 2087 ✓
+  - xray: 10001, 10002 (127.0.0.1), 443 (*) ✓
+- Created VLESS user, but **connection STILL doesn't work**
+- Need deeper diagnostics: Xray logs, firewall rules, nginx config content, V2rayNG error message
+
+### Diagnostic Plan (Next Session)
+1. Check Xray access/error logs for connection attempts
+2. Check iptables rules to verify firewall is open
+3. Check actual nginx config content at /etc/nginx/conf.d/freeflow.conf
+4. Check for conflicting nginx configs in conf.d/
+5. Get V2rayNG specific error message
+6. Test external connectivity (curl to VPS from outside)
