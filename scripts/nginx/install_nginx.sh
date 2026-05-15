@@ -105,9 +105,6 @@ generate_nginx_config() {
         ssh_ws_block="
     # --- SSH WebSocket ---
     location /ssh {
-        if (\$http_upgrade != \"Websocket\") {
-            return 404;
-        }
         proxy_redirect off;
         proxy_pass http://127.0.0.1:700;
         proxy_http_version 1.1;
@@ -190,9 +187,6 @@ server {
 
     # VLESS WebSocket (Non-TLS)
     location ${vless_ws_path} {
-        if (\$http_upgrade != "Websocket") {
-            rewrite /(.*) / break;
-        }
         proxy_redirect off;
         proxy_pass http://127.0.0.1:10001;
         proxy_http_version 1.1;
@@ -233,9 +227,6 @@ server {
 
     # VMESS WebSocket (Non-TLS)
     location ${vmess_ws_path} {
-        if (\$http_upgrade != "Websocket") {
-            return 404;
-        }
         proxy_redirect off;
         proxy_pass http://127.0.0.1:10005;
         proxy_http_version 1.1;
@@ -254,9 +245,6 @@ server {
 
     # Trojan WebSocket (Non-TLS)
     location ${trojan_ws_path} {
-        if (\$http_upgrade != "Websocket") {
-            return 404;
-        }
         proxy_redirect off;
         proxy_pass http://127.0.0.1:10007;
         proxy_http_version 1.1;
@@ -300,9 +288,6 @@ ${http2_directive}
 
     # VLESS WebSocket (TLS)
     location ${vless_ws_path} {
-        if (\$http_upgrade != "Websocket") {
-            rewrite /(.*) / break;
-        }
         proxy_redirect off;
         proxy_pass http://127.0.0.1:10001;
         proxy_http_version 1.1;
@@ -343,9 +328,6 @@ ${http2_directive}
 
     # VMESS WebSocket (TLS)
     location ${vmess_ws_path} {
-        if (\$http_upgrade != "Websocket") {
-            return 404;
-        }
         proxy_redirect off;
         proxy_pass http://127.0.0.1:10005;
         proxy_http_version 1.1;
@@ -364,9 +346,6 @@ ${http2_directive}
 
     # Trojan WebSocket (TLS)
     location ${trojan_ws_path} {
-        if (\$http_upgrade != "Websocket") {
-            return 404;
-        }
         proxy_redirect off;
         proxy_pass http://127.0.0.1:10007;
         proxy_http_version 1.1;

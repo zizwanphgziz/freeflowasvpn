@@ -13,7 +13,7 @@ export DEBIAN_FRONTEND=noninteractive
 REPO_OWNER="zizwanphgziz"
 REPO_NAME="freeflowasvpn"
 REPO_URL="https://github.com/${REPO_OWNER}/${REPO_NAME}"
-REPO_BRANCH="devin/1778775736-v2.1-ux-fix"
+REPO_BRANCH="devin/1778798867-v2.2-critical-fixes"
 INSTALL_DIR="/usr/local/lib/freeflow"
 FF_VERSION="2.2.0"
 
