@@ -129,6 +129,8 @@
 - [x] Identified critical SSL/cert gap: FreeFlow uses certbot, all reference scripts use acme.sh
 - [x] 8th bug fixed: Missing DEBIAN_FRONTEND=noninteractive + debconf pre-seeding
 - [x] **DONE**: Switched certbot to acme.sh (ECC ec-256 certs)
+- [x] **Bug #9**: REPO_BRANCH pointed to v2.1 — ALL v2.2 fixes not actually installed!
+- [x] **Bug #10**: WebSocket case-sensitivity — Nginx checked 'Websocket' but clients send 'websocket'
 - [ ] stunnel4, chrony deferred (optional, not needed for connection fix)
 - [ ] Live VPS testing (Ahmad to test on fresh Debian 13 / Ubuntu 26.04)
 - [ ] Stress testing multiport connections
@@ -161,3 +163,5 @@
 | 2026-05-14 | v2.2: 8th fix: DEBIAN_FRONTEND=noninteractive + debconf pre-seeding |
 | 2026-05-14 | Session 6: JinGGo video analysis, identified acme.sh as critical missing component |
 | 2026-05-14 | Session 6: Switched SSL from certbot to acme.sh (ECC ec-256), removed self-signed fallback |
+|| 2026-05-15 | Session 7: Bug #9: REPO_BRANCH pointed to v2.1 — fixed to v2.2 so fixes actually install |
+|| 2026-05-15 | Session 7: Bug #10: WebSocket case-sensitivity — removed all if-checks from nginx proxy |

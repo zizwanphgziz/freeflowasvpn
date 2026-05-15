@@ -261,3 +261,21 @@ chmod +x /root/.acme.sh/acme.sh
 - Self-signed cert fallback removed (fails loudly instead of silently)
 - Menu "Renew SSL" option updated to use acme.sh
 - acme.sh auto-renewal via built-in cron (no manual cron needed)
+
+### Ahmad's Test Result (Post acme.sh fix)
+- Installed on fresh VPS, SSL cert is real Let's Encrypt ECC (confirmed)
+- Created VLESS user, but **connection still doesn't work**
+- Ahmad: "Seems like there is more missing... this script installation looks nothing like that"
+
+### Deep Audit — 2 More Critical Bugs Found
+
+**Bug #9 — REPO_BRANCH pointing to wrong branch (CRITICAL):**
+- `setup.sh` line 16: `REPO_BRANCH="devin/1778775736-v2.1-ux-fix"` (OLD v2.1 branch!)
+- setup.sh downloads from v2.1 branch, so ALL v2.2 fixes (firewall, service enable, acme.sh, etc.) were **NOT actually installed**
+- Fixed: changed to `devin/1778798867-v2.2-critical-fixes`
+
+**Bug #10 — WebSocket case-sensitivity in Nginx config (CRITICAL):**
+- Nginx checked `if ($http_upgrade != "Websocket")` — capital 'W'
+- V2rayNG/Clash clients send `Upgrade: websocket` — lowercase 'w'
+- Case mismatch caused: VMESS/Trojan WS return 404, VLESS WS gets wrong path
+- Fixed: removed all `if` blocks — proxy_pass handles WebSocket upgrade natively via Upgrade/Connection headers
