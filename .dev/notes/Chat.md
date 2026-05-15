@@ -186,3 +186,74 @@ Internet → Nginx (80, 443, 8080, 8443, 8880, 2083, 2086, 2087)
 4. Auto-install SSH WS and Ads Blocker during setup
 5. Nginx http2 directive now auto-detects nginx version for compatibility
 6. Auto-update branch name sanitization fixed
+
+## Session 6 — JinGGo Video Analysis & SSL/Cert Investigation
+
+### Ahmad's Request
+- Recorded video of JinGGo installing on a fresh VPS
+- Asked to compare: "I see there are many things missing from our script... Seems like cert or something there... acme.sh and something about key..."
+
+### JinGGo Installation Video Analysis (3:46 video)
+
+**Complete JinGGo Install Flow (from video):**
+1. Password check ("LUQMAN") — shc-compiled ELF binary
+2. VPS check (IP detection via icanhazip.com)
+3. Domain prompt (only question asked)
+4. `apt update && apt upgrade`
+5. Base packages install (curl, wget, socat, openssl, etc.)
+6. **acme.sh SSL certificate generation** ← CRITICAL
+7. Xray core download and install
+8. stunnel4 build/install
+9. dropbear install
+10. chrony (NTP time sync) install
+11. vnstat install
+12. SSH-VPN setup
+13. systemd service creation + enable
+14. Firewall configuration
+15. Completion screen with port listing
+
+### SSL/TLS Certificate Flow (Key Finding)
+
+**What JinGGo does (acme.sh):**
+1. Installs acme.sh from GitHub → `/root/.acme.sh/acme.sh`
+2. `acme.sh --upgrade --auto-upgrade` (auto-updates itself)
+3. `acme.sh --set-default-ca --server letsencrypt` (Let's Encrypt CA)
+4. `acme.sh --issue -d $domain --standalone -k ec-256` (ECC cert, standalone mode port 80)
+5. `acme.sh --installcert -d $domain --fullchainpath /etc/xray/xray.crt --keypath /etc/xray/xray.key --ecc`
+6. Result: Real Let's Encrypt cert with ECC key at `/etc/xray/xray.crt` + `/etc/xray/xray.key`
+7. acme.sh auto-renewal handled via built-in cron
+
+**What FreeFlow does (certbot) — PROBLEM:**
+1. `apt-get install certbot` — heavy dependency (python/snap)
+2. `certbot certonly --standalone` — issues cert
+3. Falls back to **self-signed cert** if certbot fails
+4. Self-signed certs are **rejected by VPN clients** → TLS connections fail silently!
+5. certbot renewal via custom cron
+
+**Confirmed from NevermoreSSH reference script (readable source):**
+```bash
+mkdir /root/.acme.sh
+curl https://raw.githubusercontent.com/.../acme.sh -o /root/.acme.sh/acme.sh
+chmod +x /root/.acme.sh/acme.sh
+/root/.acme.sh/acme.sh --upgrade --auto-upgrade
+/root/.acme.sh/acme.sh --set-default-ca --server letsencrypt
+/root/.acme.sh/acme.sh --issue -d $domain --standalone -k ec-256
+~/.acme.sh/acme.sh --installcert -d $domain --fullchainpath /usr/local/etc/xray/xray.crt --keypath /usr/local/etc/xray/xray.key --ecc
+```
+
+### Other Missing Components (from video)
+- **stunnel4** — SSL tunnel for SSH connections (JinGGo has this, FreeFlow doesn't)
+- **dropbear** — lightweight SSH server on alternate port
+- **chrony** — NTP time sync (JinGGo has this, FreeFlow doesn't)
+- **vnstat** — FreeFlow already has this ✓
+
+### 8th Bug Found (Session 5 continued)
+- Missing `DEBIAN_FRONTEND=noninteractive` — every reference script has this
+- Added to both `setup.sh` and `dependencies.sh`
+- Added debconf pre-seeding for iptables-persistent
+
+### Decision Pending
+- Switch from certbot → acme.sh? (recommended — all reference scripts use acme.sh)
+- Add stunnel4? (optional — SSH SSL tunneling)
+- Add chrony? (nice-to-have — NTP time sync)
+- Ahmad asked for pros/cons analysis before deciding

@@ -122,10 +122,27 @@
 - [x] **Bug: Nginx http2 directive incompatible** — Auto-detects nginx version for `http2 on;` vs `listen ssl http2;`
 - [x] **Bug: Auto-update broken for branch names with `/`** — Added branch name sanitization
 
-## Phase 11: Quality & Testing — IN PROGRESS
+## Phase 11: JinGGo Video Analysis & SSL Investigation — IN PROGRESS
 - [x] shellcheck validation (0 errors)
+- [x] JinGGo installation video analyzed (3:46 recording on fresh VPS)
+- [x] Side-by-side comparison: JinGGo vs FreeFlow installation flow
+- [x] Identified critical SSL/cert gap: FreeFlow uses certbot, all reference scripts use acme.sh
+- [x] 8th bug fixed: Missing DEBIAN_FRONTEND=noninteractive + debconf pre-seeding
+- [ ] **Decision pending**: Switch certbot to acme.sh (recommended)
+- [ ] **Decision pending**: Add stunnel4, chrony (optional enhancements)
 - [ ] Live VPS testing (Ahmad to test on fresh Debian 13 / Ubuntu 26.04)
 - [ ] Stress testing multiport connections
+
+## SSL/TLS Certificate Comparison
+| Feature | FreeFlow (current) | JinGGo / Reference Scripts |
+|---------|-------------------|---------------------------|
+| ACME Client | certbot | acme.sh |
+| Key Type | RSA 2048 | ECC (ec-256) |
+| Fallback | Self-signed (breaks TLS!) | No fallback |
+| Dependencies | python3/snap (heavy) | curl/socat only (lightweight) |
+| Auto-renewal | Custom cron | Built-in acme.sh cron |
+| Cert path | /etc/xray/xray.crt + .key | /etc/xray/xray.crt + .key |
+| Used by | FreeFlow only | JinGGo, NevermoreSSH, Cabrata, all others |
 
 ## Changelog
 | Date | Change |
@@ -141,3 +158,5 @@
 | 2026-05-14 | v2.1: Share links generated for all protocols (vless://, vmess://, trojan://) |
 | 2026-05-14 | v2.2: Fixed 7 critical bugs causing connection failures on real VPS |
 | 2026-05-14 | v2.2: Firewall setup, service enable, http2 compat, auto-install SSH WS + Ads |
+| 2026-05-14 | v2.2: 8th fix: DEBIAN_FRONTEND=noninteractive + debconf pre-seeding |
+| 2026-05-14 | Session 6: JinGGo video analysis, identified acme.sh as critical missing component |
