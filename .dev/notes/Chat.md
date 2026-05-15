@@ -252,8 +252,12 @@ chmod +x /root/.acme.sh/acme.sh
 - Added to both `setup.sh` and `dependencies.sh`
 - Added debconf pre-seeding for iptables-persistent
 
-### Decision Pending
-- Switch from certbot → acme.sh? (recommended — all reference scripts use acme.sh)
-- Add stunnel4? (optional — SSH SSL tunneling)
-- Add chrony? (nice-to-have — NTP time sync)
-- Ahmad asked for pros/cons analysis before deciding
+### Decision & Implementation
+- Ahmad chose: **acme.sh only** (Option 1)
+- stunnel4 and chrony deferred (not needed for connection fix)
+- **IMPLEMENTED**: Replaced certbot with acme.sh in `install_nginx.sh`, `dependencies.sh`, `menu.sh`
+- certbot removed from base packages
+- ECC (ec-256) keys used instead of RSA 2048
+- Self-signed cert fallback removed (fails loudly instead of silently)
+- Menu "Renew SSL" option updated to use acme.sh
+- acme.sh auto-renewal via built-in cron (no manual cron needed)

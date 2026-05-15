@@ -15,7 +15,7 @@
 - [x] Multiport support (80, 8080, 8880, 2086 non-TLS / 443, 8443, 2083, 2087 TLS)
 - [x] Multipath support (custom paths — user can set '/' or any path)
 - [x] Nginx reverse proxy config generator (multiport + multipath)
-- [x] SSL/TLS certificate setup (certbot + auto-renewal cron)
+- [x] SSL/TLS certificate setup (acme.sh ECC + auto-renewal)
 - [x] Stats API enabled in Xray config for usage tracking
 
 ## Phase 3: Optional Modules — DONE
@@ -128,8 +128,8 @@
 - [x] Side-by-side comparison: JinGGo vs FreeFlow installation flow
 - [x] Identified critical SSL/cert gap: FreeFlow uses certbot, all reference scripts use acme.sh
 - [x] 8th bug fixed: Missing DEBIAN_FRONTEND=noninteractive + debconf pre-seeding
-- [ ] **Decision pending**: Switch certbot to acme.sh (recommended)
-- [ ] **Decision pending**: Add stunnel4, chrony (optional enhancements)
+- [x] **DONE**: Switched certbot to acme.sh (ECC ec-256 certs)
+- [ ] stunnel4, chrony deferred (optional, not needed for connection fix)
 - [ ] Live VPS testing (Ahmad to test on fresh Debian 13 / Ubuntu 26.04)
 - [ ] Stress testing multiport connections
 
@@ -160,3 +160,4 @@
 | 2026-05-14 | v2.2: Firewall setup, service enable, http2 compat, auto-install SSH WS + Ads |
 | 2026-05-14 | v2.2: 8th fix: DEBIAN_FRONTEND=noninteractive + debconf pre-seeding |
 | 2026-05-14 | Session 6: JinGGo video analysis, identified acme.sh as critical missing component |
+| 2026-05-14 | Session 6: Switched SSL from certbot to acme.sh (ECC ec-256), removed self-signed fallback |
