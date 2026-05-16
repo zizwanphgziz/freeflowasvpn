@@ -18,17 +18,23 @@ TROJAN_TAGS=("trojan-ws" "trojan-grpc" "trojan-tcp")
 
 show_vless_config() {
     local username="$1" uuid="$2" expiry="$3"
-    local domain server_ip
+    local domain server_ip cf_mode
     domain=$(get_domain)
     server_ip=$(get_server_ip)
+    cf_mode=""
+    [[ -f "${CONFIG_DIR}/cf_mode" ]] && cf_mode="yes"
+
+    # In CF mode, address for non-TLS uses domain (CDN IP resolved by CF)
+    local addr="${domain}"
 
     local vless_ws_path="/vless-ws" vless_hu_path="/vless-hup"
     local vless_xhttp_path="/vless-xhttp" vless_grpc_sn="vless-grpc"
     [[ -f "${CONFIG_DIR}/paths.conf" ]] && source "${CONFIG_DIR}/paths.conf"
 
-    local reality_public reality_short_id
+    local reality_public reality_short_id reality_dest
     reality_public=$(cat "${CONFIG_DIR}/reality_public_key" 2>/dev/null)
     reality_short_id=$(cat "${CONFIG_DIR}/reality_short_id" 2>/dev/null)
+    reality_dest=$(cat "${CONFIG_DIR}/reality_dest" 2>/dev/null || echo "www.google.com")
 
     echo ""
     echo -e "${CYAN}═════════════════════════════════════════${NC}"
@@ -38,7 +44,9 @@ show_vless_config() {
     echo -e " Expired On          : ${YELLOW}${expiry}${NC}"
     echo -e " Domain              : ${domain}"
     echo -e " IP/Host             : ${server_ip}"
-    echo -e " Port TLS            : 8443, 2083, 2087"
+    [[ -n "${cf_mode}" ]] && echo -e " CDN Mode            : ${GREEN}Cloudflare${NC}"
+    echo -e " Port TLS            : 8443"
+    echo -e " Port gRPC           : 2083, 2087"
     echo -e " Port None TLS       : 80, 8080, 8880, 2086"
     echo -e " Port Reality        : 443"
     echo -e " ID                  : ${uuid}"
@@ -50,28 +58,28 @@ show_vless_config() {
     echo -e " gRPC ServiceName    : ${vless_grpc_sn}"
     echo -e "${CYAN}═════════════════════════════════════════${NC}"
     echo -e " ${BOLD}LINK VLESS WS TLS :${NC}"
-    echo -e " vless://${uuid}@${domain}:8443?path=${vless_ws_path}&security=tls&encryption=none&type=ws&sni=${domain}#${username}"
+    echo -e " vless://${uuid}@${addr}:8443?path=${vless_ws_path}&security=tls&encryption=none&type=ws&sni=${domain}#${username}"
     echo -e "${CYAN}═════════════════════════════════════════${NC}"
     echo -e " ${BOLD}LINK VLESS WS NTLS :${NC}"
-    echo -e " vless://${uuid}@${domain}:80?path=${vless_ws_path}&encryption=none&type=ws&host=${domain}#${username}"
+    echo -e " vless://${uuid}@${addr}:80?path=${vless_ws_path}&encryption=none&type=ws&host=${domain}#${username}"
     echo -e "${CYAN}═════════════════════════════════════════${NC}"
     echo -e " ${BOLD}LINK VLESS HTTPUPGRADE TLS :${NC}"
-    echo -e " vless://${uuid}@${domain}:8443?path=${vless_hu_path}&security=tls&encryption=none&type=httpupgrade&sni=${domain}#${username}"
+    echo -e " vless://${uuid}@${addr}:8443?path=${vless_hu_path}&security=tls&encryption=none&type=httpupgrade&sni=${domain}#${username}"
     echo -e "${CYAN}═════════════════════════════════════════${NC}"
     echo -e " ${BOLD}LINK VLESS HTTPUPGRADE NTLS :${NC}"
-    echo -e " vless://${uuid}@${domain}:80?path=${vless_hu_path}&encryption=none&type=httpupgrade&host=${domain}#${username}"
+    echo -e " vless://${uuid}@${addr}:80?path=${vless_hu_path}&encryption=none&type=httpupgrade&host=${domain}#${username}"
     echo -e "${CYAN}═════════════════════════════════════════${NC}"
     echo -e " ${BOLD}LINK VLESS XHTTP NTLS :${NC}"
-    echo -e " vless://${uuid}@${domain}:8080?mode=auto&path=${vless_xhttp_path}&encryption=none&type=xhttp&host=${domain}#${username}"
+    echo -e " vless://${uuid}@${addr}:8080?mode=auto&path=${vless_xhttp_path}&encryption=none&type=xhttp&host=${domain}#${username}"
     echo -e "${CYAN}═════════════════════════════════════════${NC}"
     echo -e " ${BOLD}LINK VLESS XHTTP TLS :${NC}"
-    echo -e " vless://${uuid}@${domain}:8443?mode=auto&path=${vless_xhttp_path}&security=tls&encryption=none&type=xhttp&sni=${domain}#${username}"
+    echo -e " vless://${uuid}@${addr}:8443?mode=auto&path=${vless_xhttp_path}&security=tls&encryption=none&type=xhttp&sni=${domain}#${username}"
     echo -e "${CYAN}═════════════════════════════════════════${NC}"
     echo -e " ${BOLD}LINK VLESS GRPC :${NC}"
-    echo -e " vless://${uuid}@${domain}:8443?mode=gun&security=tls&encryption=none&type=grpc&serviceName=${vless_grpc_sn}&sni=${domain}#${username}"
+    echo -e " vless://${uuid}@${addr}:2083?mode=gun&security=tls&encryption=none&type=grpc&serviceName=${vless_grpc_sn}&sni=${domain}#${username}"
     echo -e "${CYAN}═════════════════════════════════════════${NC}"
     echo -e " ${BOLD}LINK VLESS XTLS REALITY :${NC}"
-    echo -e " vless://${uuid}@${server_ip}:443?security=reality&encryption=none&headerType=none&type=tcp&flow=xtls-rprx-vision&sni=www.google.com&fp=chrome&pbk=${reality_public}&sid=${reality_short_id}#${username}"
+    echo -e " vless://${uuid}@${server_ip}:443?security=reality&encryption=none&headerType=none&type=tcp&flow=xtls-rprx-vision&sni=${reality_dest}&fp=chrome&pbk=${reality_public}&sid=${reality_short_id}#${username}"
     echo -e "${CYAN}═════════════════════════════════════════${NC}"
 }
 
@@ -80,6 +88,7 @@ show_vmess_config() {
     local domain server_ip
     domain=$(get_domain)
     server_ip=$(get_server_ip)
+    local addr="${domain}"
 
     local vmess_ws_path="/vmess-ws" vmess_grpc_sn="vmess-grpc"
     [[ -f "${CONFIG_DIR}/paths.conf" ]] && source "${CONFIG_DIR}/paths.conf"
@@ -87,9 +96,9 @@ show_vmess_config() {
     # VMESS share link uses base64-encoded JSON
     local vmess_ws_tls vmess_ws_ntls vmess_grpc
 
-    vmess_ws_tls=$(echo -n "{\"v\":\"2\",\"ps\":\"${username}\",\"add\":\"${domain}\",\"port\":\"8443\",\"id\":\"${uuid}\",\"aid\":\"0\",\"scy\":\"auto\",\"net\":\"ws\",\"type\":\"none\",\"host\":\"${domain}\",\"path\":\"${vmess_ws_path}\",\"tls\":\"tls\",\"sni\":\"${domain}\"}" | base64 -w 0)
-    vmess_ws_ntls=$(echo -n "{\"v\":\"2\",\"ps\":\"${username}\",\"add\":\"${domain}\",\"port\":\"80\",\"id\":\"${uuid}\",\"aid\":\"0\",\"scy\":\"auto\",\"net\":\"ws\",\"type\":\"none\",\"host\":\"${domain}\",\"path\":\"${vmess_ws_path}\",\"tls\":\"\"}" | base64 -w 0)
-    vmess_grpc=$(echo -n "{\"v\":\"2\",\"ps\":\"${username}\",\"add\":\"${domain}\",\"port\":\"8443\",\"id\":\"${uuid}\",\"aid\":\"0\",\"scy\":\"auto\",\"net\":\"grpc\",\"type\":\"none\",\"host\":\"${domain}\",\"path\":\"${vmess_grpc_sn}\",\"tls\":\"tls\",\"sni\":\"${domain}\"}" | base64 -w 0)
+    vmess_ws_tls=$(echo -n "{\"v\":\"2\",\"ps\":\"${username}\",\"add\":\"${addr}\",\"port\":\"8443\",\"id\":\"${uuid}\",\"aid\":\"0\",\"scy\":\"auto\",\"net\":\"ws\",\"type\":\"none\",\"host\":\"${domain}\",\"path\":\"${vmess_ws_path}\",\"tls\":\"tls\",\"sni\":\"${domain}\"}" | base64 -w 0)
+    vmess_ws_ntls=$(echo -n "{\"v\":\"2\",\"ps\":\"${username}\",\"add\":\"${addr}\",\"port\":\"80\",\"id\":\"${uuid}\",\"aid\":\"0\",\"scy\":\"auto\",\"net\":\"ws\",\"type\":\"none\",\"host\":\"${domain}\",\"path\":\"${vmess_ws_path}\",\"tls\":\"\"}" | base64 -w 0)
+    vmess_grpc=$(echo -n "{\"v\":\"2\",\"ps\":\"${username}\",\"add\":\"${addr}\",\"port\":\"2083\",\"id\":\"${uuid}\",\"aid\":\"0\",\"scy\":\"auto\",\"net\":\"grpc\",\"type\":\"none\",\"host\":\"${domain}\",\"path\":\"${vmess_grpc_sn}\",\"tls\":\"tls\",\"sni\":\"${domain}\"}" | base64 -w 0)
 
     echo ""
     echo -e "${CYAN}═════════════════════════════════════════${NC}"
@@ -99,7 +108,8 @@ show_vmess_config() {
     echo -e " Expired On          : ${YELLOW}${expiry}${NC}"
     echo -e " Domain              : ${domain}"
     echo -e " IP/Host             : ${server_ip}"
-    echo -e " Port TLS            : 8443, 2083, 2087"
+    echo -e " Port TLS            : 8443"
+    echo -e " Port gRPC           : 2083, 2087"
     echo -e " Port None TLS       : 80, 8080, 8880, 2086"
     echo -e " ID                  : ${uuid}"
     echo -e " Security            : auto"
@@ -123,6 +133,7 @@ show_trojan_config() {
     local domain server_ip
     domain=$(get_domain)
     server_ip=$(get_server_ip)
+    local addr="${domain}"
 
     local trojan_ws_path="/trojan-ws" trojan_grpc_sn="trojan-grpc"
     [[ -f "${CONFIG_DIR}/paths.conf" ]] && source "${CONFIG_DIR}/paths.conf"
@@ -135,7 +146,8 @@ show_trojan_config() {
     echo -e " Expired On          : ${YELLOW}${expiry}${NC}"
     echo -e " Domain              : ${domain}"
     echo -e " IP/Host             : ${server_ip}"
-    echo -e " Port TLS            : 8443, 2083, 2087"
+    echo -e " Port TLS            : 8443"
+    echo -e " Port gRPC           : 2083, 2087"
     echo -e " Port None TLS       : 80, 8080, 8880, 2086"
     echo -e " Password            : ${uuid}"
     echo -e " Network             : ws/grpc/tcp"
@@ -143,16 +155,18 @@ show_trojan_config() {
     echo -e " gRPC ServiceName    : ${trojan_grpc_sn}"
     echo -e "${CYAN}═════════════════════════════════════════${NC}"
     echo -e " ${BOLD}LINK TROJAN WS TLS :${NC}"
-    echo -e " trojan://${uuid}@${domain}:8443?path=${trojan_ws_path}&security=tls&type=ws&sni=${domain}#${username}"
+    echo -e " trojan://${uuid}@${addr}:8443?path=${trojan_ws_path}&security=tls&type=ws&sni=${domain}#${username}"
     echo -e "${CYAN}═════════════════════════════════════════${NC}"
     echo -e " ${BOLD}LINK TROJAN WS NTLS :${NC}"
-    echo -e " trojan://${uuid}@${domain}:80?path=${trojan_ws_path}&type=ws&host=${domain}#${username}"
+    echo -e " trojan://${uuid}@${addr}:80?path=${trojan_ws_path}&type=ws&host=${domain}#${username}"
     echo -e "${CYAN}═════════════════════════════════════════${NC}"
     echo -e " ${BOLD}LINK TROJAN GRPC :${NC}"
-    echo -e " trojan://${uuid}@${domain}:8443?mode=gun&security=tls&type=grpc&serviceName=${trojan_grpc_sn}&sni=${domain}#${username}"
+    echo -e " trojan://${uuid}@${addr}:2083?mode=gun&security=tls&type=grpc&serviceName=${trojan_grpc_sn}&sni=${domain}#${username}"
     echo -e "${CYAN}═════════════════════════════════════════${NC}"
+    local reality_dest_trojan
+    reality_dest_trojan=$(cat "${CONFIG_DIR}/reality_dest" 2>/dev/null || echo "www.google.com")
     echo -e " ${BOLD}LINK TROJAN TCP (via Reality fallback) :${NC}"
-    echo -e " trojan://${uuid}@${server_ip}:443?security=reality&type=tcp&sni=www.google.com&fp=chrome#${username}"
+    echo -e " trojan://${uuid}@${server_ip}:443?security=reality&type=tcp&sni=${reality_dest_trojan}&fp=chrome#${username}"
     echo -e "${CYAN}═════════════════════════════════════════${NC}"
 }
 
@@ -570,7 +584,8 @@ create_trial_account() {
     local uuid
     uuid=$(generate_uuid | tr -d '[:cntrl:]' | tr -d '[:space:]')
     local minutes=$((hours * 60))
-    local expiry
+    local expiry expiry_epoch
+    expiry_epoch=$(date -d "+${minutes} minutes" +%s)
     expiry=$(date -d "+${minutes} minutes" +"%Y-%m-%d")
 
     cat > "${USER_DB}/${protocol}/active/${trial_name}" <<EOF
@@ -579,6 +594,7 @@ UUID=${uuid}
 PROTOCOL=${protocol}
 CREATED=$(date +"%Y-%m-%d %H:%M")
 EXPIRY=${expiry}
+EXPIRY_EPOCH=${expiry_epoch}
 MAX_IP=1
 DATA_LIMIT_GB=1
 STATUS=active
@@ -677,18 +693,78 @@ check_login_users() {
 # ============================================================
 
 check_expired_users() {
+    local now_epoch
+    now_epoch=$(date +%s)
+
     for proto in vless vmess trojan; do
         for f in "${USER_DB}/${proto}/active/"*; do
             [[ -f "${f}" ]] || continue
-            local uname expiry
+            local uname expiry expiry_epoch is_trial
             uname=$(grep "^USERNAME=" "${f}" | cut -d= -f2)
             expiry=$(grep "^EXPIRY=" "${f}" | cut -d= -f2)
-            if is_expired "${expiry}"; then
+            expiry_epoch=$(grep "^EXPIRY_EPOCH=" "${f}" | cut -d= -f2)
+            is_trial=$(grep "^TRIAL=" "${f}" | cut -d= -f2)
+
+            local should_expire=false
+            if [[ "${is_trial}" == "true" && -n "${expiry_epoch}" ]]; then
+                [[ "${now_epoch}" -ge "${expiry_epoch}" ]] && should_expire=true
+            else
+                is_expired "${expiry}" && should_expire=true
+            fi
+
+            if [[ "${should_expire}" == "true" ]]; then
                 expire_protocol_user "${proto}" "${uname}"
                 echo "[$(date)] User '${uname}' (${proto}) auto-expired" >> "${LOG_DIR}/expiry.log"
             fi
         done
     done
+}
+
+# ============================================================
+#  REACTIVATE XRAY USER (callable from bot)
+# ============================================================
+
+reactivate_xray_user() {
+    local protocol="$1" uuid="$2" username="$3"
+    local email="${username}@freeflow"
+    local tmp_config
+    tmp_config=$(mktemp)
+
+    case "${protocol}" in
+        vless)
+            jq --arg uuid "${uuid}" --arg email "${email}" '
+                .inbounds |= map(
+                    if (.tag == "vless-ws" or .tag == "vless-httpupgrade" or .tag == "vless-xhttp" or .tag == "vless-grpc") then
+                        .settings.clients += [{"id": $uuid, "email": $email}]
+                    elif .tag == "vless-reality" then
+                        .settings.clients += [{"id": $uuid, "flow": "xtls-rprx-vision", "email": $email}]
+                    else . end
+                )
+            ' "${XRAY_CONFIG}" > "${tmp_config}" ;;
+        vmess)
+            jq --arg uuid "${uuid}" --arg email "${email}" '
+                .inbounds |= map(
+                    if .tag == "vmess-ws" or .tag == "vmess-grpc" then
+                        .settings.clients += [{"id": $uuid, "alterId": 0, "email": $email}]
+                    else . end
+                )
+            ' "${XRAY_CONFIG}" > "${tmp_config}" ;;
+        trojan)
+            jq --arg password "${uuid}" --arg email "${email}" '
+                .inbounds |= map(
+                    if .tag == "trojan-ws" or .tag == "trojan-grpc" or .tag == "trojan-tcp" then
+                        .settings.clients += [{"password": $password, "email": $email}]
+                    else . end
+                )
+            ' "${XRAY_CONFIG}" > "${tmp_config}" ;;
+    esac
+
+    if [[ -s "${tmp_config}" ]]; then
+        mv "${tmp_config}" "${XRAY_CONFIG}"
+        systemctl restart xray 2>/dev/null
+    else
+        rm -f "${tmp_config}"
+    fi
 }
 
 # ============================================================

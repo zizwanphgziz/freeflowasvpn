@@ -1,22 +1,27 @@
 #!/bin/bash
 # ============================================================
-# FreeFlow ASVPN - DNS-Level Ads Blocker
+# FreeFlow ASVPN - DNS-Level Ads Blocker (dnsmasq)
+# Uses dnsmasq for O(1) DNS lookup instead of /etc/hosts O(n)
 # ============================================================
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/../core/common.sh"
 
-ADS_HOSTS="/etc/freeflow/ads_hosts"
+ADS_CONF="/etc/dnsmasq.d/freeflow-ads.conf"
 ADS_MARKER="${CONFIG_DIR}/modules/ads_blocker_installed"
 
 install_ads_blocker() {
-    print_section "Installing Ads Blocker"
+    print_section "Installing Ads Blocker (dnsmasq)"
 
-    msg_info "Downloading ad-blocking hosts list..."
+    # Install dnsmasq
+    apt-get install -y dnsmasq > /dev/null 2>&1
+    if ! command -v dnsmasq &>/dev/null; then
+        msg_fail "dnsmasq installation failed"
+        return 1
+    fi
 
-    mkdir -p "$(dirname "${ADS_HOSTS}")"
+    msg_info "Downloading ad-blocking list..."
 
-    # Download popular hosts-based ad blocklist
     local tmp_hosts
     tmp_hosts=$(mktemp)
     wget -qO "${tmp_hosts}" "https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts" 2>/dev/null
@@ -27,31 +32,29 @@ install_ads_blocker() {
         return 1
     fi
 
-    # Filter to just the blocking entries
-    grep "^0.0.0.0" "${tmp_hosts}" | grep -v "0.0.0.0 0.0.0.0" > "${ADS_HOSTS}"
+    # Convert hosts format to dnsmasq format
+    mkdir -p /etc/dnsmasq.d
+    grep "^0.0.0.0" "${tmp_hosts}" | grep -v "0.0.0.0 0.0.0.0" \
+        | awk '{print "address=/"$2"/0.0.0.0"}' \
+        > "${ADS_CONF}"
     rm -f "${tmp_hosts}"
 
     local count
-    count=$(wc -l < "${ADS_HOSTS}")
-    msg_ok "Downloaded ${count} ad domains to block"
+    count=$(wc -l < "${ADS_CONF}")
 
-    # Backup original hosts
-    cp /etc/hosts /etc/hosts.freeflow.bak 2>/dev/null
-
-    # Add to /etc/hosts if not already added
-    if ! grep -q "# FreeFlow Ads Blocker" /etc/hosts; then
-        {
-            echo ""
-            echo "# FreeFlow Ads Blocker — Start"
-            cat "${ADS_HOSTS}"
-            echo "# FreeFlow Ads Blocker — End"
-        } >> /etc/hosts
+    # Clean up old /etc/hosts entries if present from previous version
+    if grep -q "# FreeFlow Ads Blocker" /etc/hosts 2>/dev/null; then
+        sed -i '/# FreeFlow Ads Blocker/,/# FreeFlow Ads Blocker — End/d' /etc/hosts
+        msg_info "Cleaned up old /etc/hosts ad entries"
     fi
+
+    systemctl enable dnsmasq 2>/dev/null
+    systemctl restart dnsmasq
 
     mkdir -p "${CONFIG_DIR}/modules"
     touch "${ADS_MARKER}"
 
-    msg_ok "Ads blocker installed (${count} domains blocked)"
+    msg_ok "Ads blocker installed via dnsmasq (${count} domains blocked)"
 }
 
 uninstall_ads_blocker() {
@@ -62,10 +65,15 @@ uninstall_ads_blocker() {
         return 1
     fi
 
-    # Remove ad-blocking entries from /etc/hosts
-    sed -i '/# FreeFlow Ads Blocker — Start/,/# FreeFlow Ads Blocker — End/d' /etc/hosts
+    rm -f "${ADS_CONF}"
+    systemctl restart dnsmasq 2>/dev/null
 
-    rm -f "${ADS_HOSTS}" "${ADS_MARKER}"
+    # Also clean /etc/hosts if old entries exist
+    if grep -q "# FreeFlow Ads Blocker" /etc/hosts 2>/dev/null; then
+        sed -i '/# FreeFlow Ads Blocker/,/# FreeFlow Ads Blocker — End/d' /etc/hosts
+    fi
+
+    rm -f "${ADS_MARKER}"
     msg_ok "Ads blocker removed"
 }
 
@@ -75,10 +83,7 @@ update_ads_blocker() {
         return 1
     fi
 
-    # Remove old entries
-    sed -i '/# FreeFlow Ads Blocker — Start/,/# FreeFlow Ads Blocker — End/d' /etc/hosts
-
-    # Re-download and apply
+    rm -f "${ADS_CONF}"
     install_ads_blocker
 }
 

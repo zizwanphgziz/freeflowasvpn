@@ -38,8 +38,9 @@ format_bytes() {
 }
 
 # --- Record usage for all users (all protocols) ---
+# Uses delta tracking: stores last-seen raw Xray counters to avoid double-counting
 record_usage() {
-    mkdir -p "${USAGE_DIR}"
+    mkdir -p "${USAGE_DIR}" "${USAGE_DIR}/.last_raw"
 
     for proto in vless vmess trojan; do
         for f in "${USER_DB}/${proto}/active/"*; do
@@ -49,19 +50,41 @@ record_usage() {
             username=$(grep "^USERNAME=" "${f}" | cut -d= -f2)
             local email="${username}@freeflow"
 
-            local up down total
-            up=$(query_user_stats "${email}" "uplink")
-            down=$(query_user_stats "${email}" "downlink")
-            total=$((up + down))
+            local raw_up raw_down
+            raw_up=$(query_user_stats "${email}" "uplink")
+            raw_down=$(query_user_stats "${email}" "downlink")
 
-            # Accumulate to stored usage
+            # Read last-seen raw values
+            local last_up last_down
+            last_up=$(cat "${USAGE_DIR}/.last_raw/${username}_up" 2>/dev/null || echo "0")
+            last_down=$(cat "${USAGE_DIR}/.last_raw/${username}_down" 2>/dev/null || echo "0")
+
+            # Compute delta (handle counter reset: if raw < last, Xray was restarted)
+            local delta_up delta_down
+            if [[ "${raw_up}" -ge "${last_up}" ]]; then
+                delta_up=$((raw_up - last_up))
+            else
+                delta_up="${raw_up}"
+            fi
+            if [[ "${raw_down}" -ge "${last_down}" ]]; then
+                delta_down=$((raw_down - last_down))
+            else
+                delta_down="${raw_down}"
+            fi
+            local delta_total=$((delta_up + delta_down))
+
+            # Save current raw values for next delta calculation
+            echo "${raw_up}" > "${USAGE_DIR}/.last_raw/${username}_up"
+            echo "${raw_down}" > "${USAGE_DIR}/.last_raw/${username}_down"
+
+            # Accumulate delta to stored usage
             local stored
             stored=$(cat "${USAGE_DIR}/${username}" 2>/dev/null || echo "0")
-            local new_total=$((stored + total))
+            local new_total=$((stored + delta_total))
             echo "${new_total}" > "${USAGE_DIR}/${username}"
 
             # Log entry
-            echo "[$(date +%Y-%m-%d\ %H:%M)] ${proto}:${username}: up=$(format_bytes ${up}) down=$(format_bytes ${down}) session_total=$(format_bytes ${total}) cumulative=$(format_bytes ${new_total})" >> "${USAGE_LOG}"
+            echo "[$(date +%Y-%m-%d\ %H:%M)] ${proto}:${username}: delta_up=$(format_bytes "${delta_up}") delta_down=$(format_bytes "${delta_down}") delta=$(format_bytes "${delta_total}") cumulative=$(format_bytes "${new_total}")" >> "${USAGE_LOG}"
 
             # Check data limit
             local data_limit
@@ -76,9 +99,6 @@ record_usage() {
             fi
         done
     done
-
-    # Reset Xray stats counters after recording
-    xray api statsquery --server=127.0.0.1:10085 -reset 2>/dev/null
 }
 
 # --- Display usage for all users ---

@@ -34,45 +34,51 @@ setup_ssl_certificate() {
         return 1
     fi
 
-    msg_info "Obtaining SSL certificate for ${domain}..."
-
+    # Stop nginx for port 80 standalone verification
     systemctl stop nginx 2>/dev/null
 
-    certbot certonly --standalone \
-        --preferred-challenges http \
-        --agree-tos \
-        --email "admin@${domain}" \
-        -d "${domain}" \
-        --non-interactive 2>&1 | tail -3
+    # Install acme.sh if not present
+    if [[ ! -f "/root/.acme.sh/acme.sh" ]]; then
+        msg_info "Installing acme.sh..."
+        curl -sL https://get.acme.sh | sh -s email="admin@${domain}" 2>/dev/null
+    fi
 
-    if [[ -f "/etc/letsencrypt/live/${domain}/fullchain.pem" ]]; then
-        mkdir -p /etc/xray
-        cp "/etc/letsencrypt/live/${domain}/fullchain.pem" /etc/xray/xray.crt
-        cp "/etc/letsencrypt/live/${domain}/privkey.pem" /etc/xray/xray.key
-        chmod 644 /etc/xray/xray.crt /etc/xray/xray.key
-        msg_ok "SSL certificate obtained from Let's Encrypt"
+    # Issue certificate using acme.sh with ECC (ec-256)
+    msg_info "Requesting Let's Encrypt certificate via acme.sh..."
+    mkdir -p /etc/xray
+
+    if /root/.acme.sh/acme.sh --issue -d "${domain}" --standalone --keylength ec-256 --force 2>/dev/null; then
+        /root/.acme.sh/acme.sh --install-cert -d "${domain}" --ecc \
+            --fullchain-file /etc/xray/xray.crt \
+            --key-file /etc/xray/xray.key \
+            --reloadcmd "systemctl reload nginx; systemctl reload xray" 2>/dev/null
+
+        chmod 644 /etc/xray/xray.crt
+        chmod 600 /etc/xray/xray.key
+
+        msg_ok "Let's Encrypt ECC certificate installed"
+        msg_info "Auto-renewal handled by acme.sh cron"
     else
-        msg_warn "Let's Encrypt cert failed — generating self-signed certificate"
-        msg_info "You can renew to Let's Encrypt later via menu (Renew SSL)"
-        mkdir -p /etc/xray
+        msg_warn "acme.sh failed — generating self-signed certificate"
+        msg_info "Replace with Let's Encrypt later via menu"
+
         openssl req -x509 -nodes -days 3650 \
-            -newkey rsa:2048 \
+            -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 \
             -keyout /etc/xray/xray.key \
             -out /etc/xray/xray.crt \
             -subj "/CN=${domain}/O=FreeFlow/C=MY" 2>/dev/null
-        chmod 644 /etc/xray/xray.crt /etc/xray/xray.key
+        chmod 644 /etc/xray/xray.crt
+        chmod 600 /etc/xray/xray.key
+
         if [[ -f /etc/xray/xray.crt ]]; then
-            msg_ok "Self-signed SSL certificate created"
+            msg_ok "Self-signed ECC certificate created"
         else
             msg_fail "Could not create SSL certificate"
             return 1
         fi
     fi
 
-    if ! crontab -l 2>/dev/null | grep -q "certbot renew"; then
-        (crontab -l 2>/dev/null; echo "0 3 * * * certbot renew --quiet --deploy-hook 'cp /etc/letsencrypt/live/${domain}/fullchain.pem /etc/xray/xray.crt && cp /etc/letsencrypt/live/${domain}/privkey.pem /etc/xray/xray.key && systemctl reload nginx'") | crontab -
-        msg_ok "SSL auto-renewal configured"
-    fi
+    systemctl start nginx 2>/dev/null
 }
 
 generate_nginx_config() {
@@ -101,9 +107,6 @@ generate_nginx_config() {
         ssh_ws_block="
     # --- SSH WebSocket ---
     location /ssh {
-        if (\$http_upgrade != \"Websocket\") {
-            return 404;
-        }
         proxy_redirect off;
         proxy_pass http://127.0.0.1:700;
         proxy_http_version 1.1;
@@ -112,6 +115,7 @@ generate_nginx_config() {
         proxy_set_header Upgrade \$http_upgrade;
         proxy_set_header Connection \"upgrade\";
         proxy_set_header Host \$http_host;
+        proxy_read_timeout 86400s;
     }"
     fi
 
@@ -152,13 +156,17 @@ http {
 NGINXMAIN
 
     # Site config — Port 443 NOT included (used by Xray Reality)
+    # Split into 3 server blocks:
+    #   1. Non-TLS (80, 8080, 8880, 2086) — WS/HttpUpgrade/XHTTP only, NO gRPC
+    #   2. TLS WebSocket (8443) — NO http2 (WS requires HTTP/1.1)
+    #   3. TLS gRPC (2083, 2087) — http2 ON (gRPC requires HTTP/2)
     cat > "${NGINX_CONF}" <<NGINXEOF
 # ============================================
 # FreeFlow ASVPN — Nginx Reverse Proxy
 # Port 443: Xray XTLS Reality (direct)
 # ============================================
 
-# --- Non-TLS Ports ---
+# --- Non-TLS Ports (WS/HttpUpgrade/XHTTP only, NO gRPC) ---
 server {
     listen 80;
     listen [::]:80;
@@ -171,11 +179,7 @@ server {
 
     server_name ${domain};
 
-    # VLESS WebSocket (Non-TLS)
     location ${vless_ws_path} {
-        if (\$http_upgrade != "Websocket") {
-            rewrite /(.*) / break;
-        }
         proxy_redirect off;
         proxy_pass http://127.0.0.1:10001;
         proxy_http_version 1.1;
@@ -184,9 +188,9 @@ server {
         proxy_set_header Upgrade \$http_upgrade;
         proxy_set_header Connection "upgrade";
         proxy_set_header Host \$http_host;
+        proxy_read_timeout 86400s;
     }
 
-    # VLESS HttpUpgrade (Non-TLS)
     location ${vless_hu_path} {
         proxy_redirect off;
         proxy_pass http://127.0.0.1:10002;
@@ -196,9 +200,9 @@ server {
         proxy_set_header Upgrade \$http_upgrade;
         proxy_set_header Connection "upgrade";
         proxy_set_header Host \$http_host;
+        proxy_read_timeout 86400s;
     }
 
-    # VLESS XHTTP (Non-TLS)
     location ${vless_xhttp_path} {
         proxy_redirect off;
         proxy_pass http://127.0.0.1:10003;
@@ -206,19 +210,12 @@ server {
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header Host \$http_host;
+        proxy_buffering off;
+        proxy_request_buffering off;
+        proxy_read_timeout 86400s;
     }
 
-    # VLESS gRPC (Non-TLS)
-    location /${vless_grpc_sn} {
-        grpc_pass grpc://127.0.0.1:10004;
-        grpc_set_header X-Real-IP \$remote_addr;
-    }
-
-    # VMESS WebSocket (Non-TLS)
     location ${vmess_ws_path} {
-        if (\$http_upgrade != "Websocket") {
-            return 404;
-        }
         proxy_redirect off;
         proxy_pass http://127.0.0.1:10005;
         proxy_http_version 1.1;
@@ -227,19 +224,10 @@ server {
         proxy_set_header Upgrade \$http_upgrade;
         proxy_set_header Connection "upgrade";
         proxy_set_header Host \$http_host;
+        proxy_read_timeout 86400s;
     }
 
-    # VMESS gRPC (Non-TLS)
-    location /${vmess_grpc_sn} {
-        grpc_pass grpc://127.0.0.1:10006;
-        grpc_set_header X-Real-IP \$remote_addr;
-    }
-
-    # Trojan WebSocket (Non-TLS)
     location ${trojan_ws_path} {
-        if (\$http_upgrade != "Websocket") {
-            return 404;
-        }
         proxy_redirect off;
         proxy_pass http://127.0.0.1:10007;
         proxy_http_version 1.1;
@@ -248,26 +236,98 @@ server {
         proxy_set_header Upgrade \$http_upgrade;
         proxy_set_header Connection "upgrade";
         proxy_set_header Host \$http_host;
-    }
-
-    # Trojan gRPC (Non-TLS)
-    location /${trojan_grpc_sn} {
-        grpc_pass grpc://127.0.0.1:10008;
-        grpc_set_header X-Real-IP \$remote_addr;
+        proxy_read_timeout 86400s;
     }
 ${ssh_ws_block}
 
-    # Default
     location / {
         root /var/www/html;
         index index.html;
     }
 }
 
-# --- TLS Ports (NOT 443 — that's Xray Reality) ---
+# --- TLS WebSocket Port (8443 — NO http2, WS requires HTTP/1.1) ---
 server {
     listen 8443 ssl;
     listen [::]:8443 ssl;
+
+    server_name ${domain};
+
+    ssl_certificate /etc/xray/xray.crt;
+    ssl_certificate_key /etc/xray/xray.key;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers HIGH:!aNULL:!MD5;
+    ssl_prefer_server_ciphers on;
+
+    location ${vless_ws_path} {
+        proxy_redirect off;
+        proxy_pass http://127.0.0.1:10001;
+        proxy_http_version 1.1;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host \$http_host;
+        proxy_read_timeout 86400s;
+    }
+
+    location ${vless_hu_path} {
+        proxy_redirect off;
+        proxy_pass http://127.0.0.1:10002;
+        proxy_http_version 1.1;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host \$http_host;
+        proxy_read_timeout 86400s;
+    }
+
+    location ${vless_xhttp_path} {
+        proxy_redirect off;
+        proxy_pass http://127.0.0.1:10003;
+        proxy_http_version 1.1;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header Host \$http_host;
+        proxy_buffering off;
+        proxy_request_buffering off;
+        proxy_read_timeout 86400s;
+    }
+
+    location ${vmess_ws_path} {
+        proxy_redirect off;
+        proxy_pass http://127.0.0.1:10005;
+        proxy_http_version 1.1;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host \$http_host;
+        proxy_read_timeout 86400s;
+    }
+
+    location ${trojan_ws_path} {
+        proxy_redirect off;
+        proxy_pass http://127.0.0.1:10007;
+        proxy_http_version 1.1;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host \$http_host;
+        proxy_read_timeout 86400s;
+    }
+${ssh_ws_block}
+
+    location / {
+        root /var/www/html;
+        index index.html;
+    }
+}
+
+# --- TLS gRPC Ports (2083, 2087 — http2 ON, required for gRPC) ---
+server {
     listen 2083 ssl;
     listen [::]:2083 ssl;
     listen 2087 ssl;
@@ -278,96 +338,25 @@ server {
 
     ssl_certificate /etc/xray/xray.crt;
     ssl_certificate_key /etc/xray/xray.key;
-    ssl_ciphers EECDH+CHACHA20:EECDH+ECDSA+AES128:EECDH+aRSA+AES128:RSA+AES128:EECDH+ECDSA+AES256:EECDH+aRSA+AES256:RSA+AES256:!MD5;
     ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers HIGH:!aNULL:!MD5;
+    ssl_prefer_server_ciphers on;
 
-    # VLESS WebSocket (TLS)
-    location ${vless_ws_path} {
-        if (\$http_upgrade != "Websocket") {
-            rewrite /(.*) / break;
-        }
-        proxy_redirect off;
-        proxy_pass http://127.0.0.1:10001;
-        proxy_http_version 1.1;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header Upgrade \$http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_set_header Host \$http_host;
-    }
-
-    # VLESS HttpUpgrade (TLS)
-    location ${vless_hu_path} {
-        proxy_redirect off;
-        proxy_pass http://127.0.0.1:10002;
-        proxy_http_version 1.1;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header Upgrade \$http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_set_header Host \$http_host;
-    }
-
-    # VLESS XHTTP (TLS)
-    location ${vless_xhttp_path} {
-        proxy_redirect off;
-        proxy_pass http://127.0.0.1:10003;
-        proxy_http_version 1.1;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header Host \$http_host;
-    }
-
-    # VLESS gRPC (TLS)
     location /${vless_grpc_sn} {
         grpc_pass grpc://127.0.0.1:10004;
         grpc_set_header X-Real-IP \$remote_addr;
     }
 
-    # VMESS WebSocket (TLS)
-    location ${vmess_ws_path} {
-        if (\$http_upgrade != "Websocket") {
-            return 404;
-        }
-        proxy_redirect off;
-        proxy_pass http://127.0.0.1:10005;
-        proxy_http_version 1.1;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header Upgrade \$http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_set_header Host \$http_host;
-    }
-
-    # VMESS gRPC (TLS)
     location /${vmess_grpc_sn} {
         grpc_pass grpc://127.0.0.1:10006;
         grpc_set_header X-Real-IP \$remote_addr;
     }
 
-    # Trojan WebSocket (TLS)
-    location ${trojan_ws_path} {
-        if (\$http_upgrade != "Websocket") {
-            return 404;
-        }
-        proxy_redirect off;
-        proxy_pass http://127.0.0.1:10007;
-        proxy_http_version 1.1;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header Upgrade \$http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_set_header Host \$http_host;
-    }
-
-    # Trojan gRPC (TLS)
     location /${trojan_grpc_sn} {
         grpc_pass grpc://127.0.0.1:10008;
         grpc_set_header X-Real-IP \$remote_addr;
     }
-${ssh_ws_block}
 
-    # Default
     location / {
         root /var/www/html;
         index index.html;

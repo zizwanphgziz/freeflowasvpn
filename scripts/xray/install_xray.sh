@@ -79,6 +79,10 @@ EOF
     fi
     reality_short_id=$(openssl rand -hex 4)
 
+    # Reality destination (configurable, default: www.google.com)
+    local reality_dest
+    reality_dest=$(cat "${CONFIG_DIR}/reality_dest" 2>/dev/null || echo "www.google.com")
+
     # Sanitize ALL variables — strip control characters that break JSON
     uuid=$(echo -n "${uuid}" | tr -d '[:cntrl:]')
     domain=$(echo -n "${domain}" | tr -d '[:cntrl:]')
@@ -90,6 +94,7 @@ EOF
     echo "${reality_private}" > "${CONFIG_DIR}/reality_private_key"
     echo "${reality_public}" > "${CONFIG_DIR}/reality_public_key"
     echo "${reality_short_id}" > "${CONFIG_DIR}/reality_short_id"
+    echo "${reality_dest}" > "${CONFIG_DIR}/reality_dest"
 
     # Setup log directory
     mkdir -p /var/log/xray
@@ -113,7 +118,7 @@ EOF
   "log": {
     "access": "/var/log/xray/access.log",
     "error": "/var/log/xray/error.log",
-    "loglevel": "warning"
+    "loglevel": "none"
   },
   "api": {
     "services": ["StatsService"],
@@ -272,9 +277,9 @@ EOF
         "security": "reality",
         "realitySettings": {
           "show": false,
-          "dest": "www.google.com:443",
+          "dest": "${reality_dest}:443",
           "xver": 0,
-          "serverNames": ["www.google.com", "google.com"],
+          "serverNames": ["${reality_dest}"],
           "privateKey": "${reality_private}",
           "shortIds": ["${reality_short_id}"]
         }

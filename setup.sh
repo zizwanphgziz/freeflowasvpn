@@ -11,9 +11,9 @@
 REPO_OWNER="zizwanphgziz"
 REPO_NAME="freeflowasvpn"
 REPO_URL="https://github.com/${REPO_OWNER}/${REPO_NAME}"
-REPO_BRANCH="devin/1778775736-v2.1-ux-fix"
+REPO_BRANCH="init-branch"
 INSTALL_DIR="/usr/local/lib/freeflow"
-VERSION="2.1.0"
+VERSION="2.3.0"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -101,6 +101,20 @@ fi
 
 echo -e " ${GREEN}[OK]${NC} Domain: ${domain}"
 
+# === Cloudflare CDN Mode (optional) ===
+echo ""
+read -rp " Will you use Cloudflare CDN proxy? [y/N]: " use_cf
+if [[ "${use_cf}" =~ ^[Yy] ]]; then
+    echo -e " ${GREEN}[OK]${NC} Cloudflare CDN mode enabled"
+    echo ""
+    echo -e " ${BOLD}REQUIRED Cloudflare Settings:${NC}"
+    echo -e "   DNS  → A record → ${YELLOW}Proxied (orange cloud)${NC}"
+    echo -e "   SSL  → ${YELLOW}Flexible${NC}"
+    echo -e "   Network → WebSockets: ${YELLOW}ON${NC}"
+    echo -e "   Network → gRPC: ${YELLOW}ON${NC}"
+    echo ""
+fi
+
 # === AUTO INSTALL EVERYTHING BELOW — NO MORE PROMPTS ===
 
 # --- Download Scripts ---
@@ -150,6 +164,11 @@ setup_directories
 set_version "${VERSION}"
 echo "${domain}" > "${CONFIG_DIR}/domain"
 
+# Save CF mode if selected
+if [[ "${use_cf}" =~ ^[Yy] ]]; then
+    echo "cloudflare" > "${CONFIG_DIR}/cf_mode"
+fi
+
 # --- Install Dependencies ---
 source "${INSTALL_DIR}/scripts/core/dependencies.sh"
 install_all_dependencies
@@ -159,9 +178,22 @@ source "${INSTALL_DIR}/scripts/xray/install_xray.sh"
 install_xray_core
 generate_xray_config
 
+# --- Install SSH WebSocket BEFORE Nginx (so /ssh location is generated) ---
+source "${INSTALL_DIR}/scripts/ssh/install_ssh_ws.sh"
+install_ssh_ws
+
 # --- Install Nginx (auto — no prompts) ---
 source "${INSTALL_DIR}/scripts/nginx/install_nginx.sh"
 install_nginx_full
+
+# --- Open Firewall Ports ---
+msg_info "Configuring firewall..."
+for port in 80 443 8080 8443 8880 2083 2086 2087 700; do
+    iptables -I INPUT -p tcp --dport "${port}" -j ACCEPT 2>/dev/null
+done
+apt-get install -y iptables-persistent > /dev/null 2>&1 || true
+netfilter-persistent save 2>/dev/null || true
+msg_ok "Firewall ports opened"
 
 # --- Setup Crons ---
 source "${INSTALL_DIR}/scripts/user/usage_tracker.sh"
@@ -185,6 +217,11 @@ fi
 mkdir -p "${CONFIG_DIR}/modules"
 touch "${CONFIG_DIR}/modules/auto_clear_log"
 
+# SSH multi-login auto-kill
+if ! crontab -l 2>/dev/null | grep -q "ssh_autokill.sh"; then
+    (crontab -l 2>/dev/null; echo "* * * * * /bin/bash ${INSTALL_DIR}/scripts/ssh/ssh_autokill.sh >> /var/log/freeflow/ssh_autokill.log 2>&1") | crontab -
+fi
+
 # Auto-reboot at 5 AM
 if ! grep -q '/sbin/reboot' /etc/crontab 2>/dev/null; then
     echo "0 5 * * * root /sbin/reboot" >> /etc/crontab
@@ -197,6 +234,10 @@ chmod +x /usr/local/bin/freeflow
 ln -sf /usr/local/bin/freeflow /usr/local/bin/menu 2>/dev/null
 
 echo 'clear ; freeflow' > /root/.profile 2>/dev/null
+
+# --- Post-Install Verification ---
+source "${INSTALL_DIR}/scripts/core/verify.sh"
+verify_install
 
 # --- Done ---
 clear

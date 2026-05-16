@@ -27,6 +27,11 @@ install_warp() {
             codename=$(lsb_release -cs 2>/dev/null || echo "focal")
         else
             codename=$(lsb_release -cs 2>/dev/null || echo "bullseye")
+            # WARP client may not have packages for newer Debian versions
+            # Map unsupported codenames to the latest supported one
+            case "${codename}" in
+                trixie|forky) codename="bookworm" ;;
+            esac
         fi
 
         echo "deb [signed-by=/usr/share/keyrings/cloudflare-warp-archive-keyring.gpg] https://pkg.cloudflareclient.com/ ${codename} main" > /etc/apt/sources.list.d/cloudflare-client.list
@@ -219,6 +224,73 @@ add_warp_route() {
         rm -f "${tmp_config}"
         msg_fail "Could not update routing rules"
     fi
+}
+
+delete_warp_route() {
+    print_section "Delete WARP Route"
+
+    if [[ ! -f "${WARP_CONFIG}/domains" || ! -s "${WARP_CONFIG}/domains" ]]; then
+        msg_info "No WARP routes configured"
+        return 0
+    fi
+
+    echo -e " Current WARP routed domains:"
+    echo ""
+    cat -n "${WARP_CONFIG}/domains"
+    echo ""
+
+    read -rp " Enter line number to delete (0 = cancel): " line_num
+    [[ -z "${line_num}" || "${line_num}" -eq 0 ]] && return 0
+
+    local total
+    total=$(wc -l < "${WARP_CONFIG}/domains")
+    if [[ "${line_num}" -gt "${total}" || "${line_num}" -lt 1 ]]; then
+        msg_warn "Invalid line number"
+        return 1
+    fi
+
+    local removed
+    removed=$(sed -n "${line_num}p" "${WARP_CONFIG}/domains")
+    sed -i "${line_num}d" "${WARP_CONFIG}/domains"
+
+    # Rebuild Xray routing rules from remaining domains
+    if [[ -s "${WARP_CONFIG}/domains" ]]; then
+        local domain_list
+        domain_list=$(jq -R -s 'split("\n") | map(select(length > 0))' "${WARP_CONFIG}/domains")
+
+        local tmp_config
+        tmp_config=$(mktemp)
+        jq --argjson domains "${domain_list}" '
+            .routing.rules = [
+                .routing.rules[] | select(.outboundTag != "warp" or .type != "field" or has("domain") | not)
+            ] + [{
+                "type": "field",
+                "domain": $domains,
+                "outboundTag": "warp"
+            }]
+        ' "${XRAY_CONFIG}" > "${tmp_config}"
+
+        if [[ -s "${tmp_config}" ]]; then
+            mv "${tmp_config}" "${XRAY_CONFIG}"
+            restart_service xray
+        else
+            rm -f "${tmp_config}"
+        fi
+    else
+        # No more domains — remove WARP routing rule
+        local tmp_config
+        tmp_config=$(mktemp)
+        jq '.routing.rules = [.routing.rules[] | select(.outboundTag != "warp")]' \
+            "${XRAY_CONFIG}" > "${tmp_config}"
+        if [[ -s "${tmp_config}" ]]; then
+            mv "${tmp_config}" "${XRAY_CONFIG}"
+            restart_service xray
+        else
+            rm -f "${tmp_config}"
+        fi
+    fi
+
+    msg_ok "Removed WARP route: ${removed}"
 }
 
 list_warp_routes() {

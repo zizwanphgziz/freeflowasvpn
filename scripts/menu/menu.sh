@@ -647,8 +647,15 @@ backup_restore_menu() {
         1)
             local backup_file="${DATA_DIR}/backup/freeflow_backup_$(date +%Y%m%d_%H%M%S).tar.gz"
             mkdir -p "${DATA_DIR}/backup"
-            tar czf "${backup_file}" -C "${DATA_DIR}" users/ usage/ 2>/dev/null
-            tar rzf "${backup_file}" -C "${CONFIG_DIR}" domain paths.conf default_uuid 2>/dev/null
+            local tmp_dir
+            tmp_dir=$(mktemp -d)
+            cp -a "${DATA_DIR}/users" "${tmp_dir}/" 2>/dev/null
+            cp -a "${DATA_DIR}/usage" "${tmp_dir}/" 2>/dev/null
+            mkdir -p "${tmp_dir}/config"
+            cp -f "${CONFIG_DIR}/domain" "${CONFIG_DIR}/paths.conf" "${CONFIG_DIR}/default_uuid" "${tmp_dir}/config/" 2>/dev/null
+            [[ -f "${CONFIG_DIR}/cf_mode" ]] && cp -f "${CONFIG_DIR}/cf_mode" "${tmp_dir}/config/"
+            tar czf "${backup_file}" -C "${tmp_dir}" . 2>/dev/null
+            rm -rf "${tmp_dir}"
             msg_ok "Backup saved: ${backup_file}"
             ;;
         2)

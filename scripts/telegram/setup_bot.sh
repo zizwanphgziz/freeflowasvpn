@@ -47,7 +47,8 @@ setup_telegram_bot() {
     mkdir -p "${BOT_CONFIG}"
     echo "${bot_token}" > "${BOT_CONFIG}/token"
     echo "${chat_id}" > "${BOT_CONFIG}/chat_id"
-    chmod 600 "${BOT_CONFIG}/token"
+    chmod 600 "${BOT_CONFIG}/token" "${BOT_CONFIG}/chat_id"
+    chmod 700 "${BOT_CONFIG}"
 
     # Install Python dependencies
     apt-get install -y python3-pip 2>/dev/null
@@ -451,10 +452,12 @@ async def handle_days(update: Update, context: ContextTypes.DEFAULT_TYPE):
         output = run_cmd(
             f"bash -c '"
             f"exp=$(date -d \"+{days} days\" +%Y-%m-%d) && "
-            f"uuid=$(grep UUID /etc/freeflow/data/users/{protocol}/expired/{username} | cut -d= -f2) && "
+            f"uuid=$(grep UUID /etc/freeflow/data/users/{protocol}/expired/{username} | cut -d= -f2 | tr -d \"[:cntrl:]\" | tr -d \"[:space:]\") && "
             f"sed -i \"s/^EXPIRY=.*/EXPIRY=$exp/\" /etc/freeflow/data/users/{protocol}/expired/{username} && "
             f"sed -i \"s/^STATUS=.*/STATUS=active/\" /etc/freeflow/data/users/{protocol}/expired/{username} && "
             f"mv /etc/freeflow/data/users/{protocol}/expired/{username} /etc/freeflow/data/users/{protocol}/active/{username} && "
+            f"source /usr/local/lib/freeflow/scripts/user/manage_user.sh && "
+            f"reactivate_xray_user {protocol} $uuid {username} && "
             f"echo \"Reactivated until $exp (UUID: $uuid)\"'"
         )
         await update.message.reply_text(output)
