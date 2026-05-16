@@ -9,11 +9,12 @@ source "${SCRIPT_DIR}/common.sh"
 install_base_packages() {
     print_section "Installing Base Packages"
 
+    export DEBIAN_FRONTEND=noninteractive
     apt-get update -y
     apt-get install -y \
         wget curl openssl sudo coreutils gnupg bc \
         lsof socat unzip zip jq htop net-tools \
-        cron vnstat python3 certbot \
+        cron vnstat python3 \
         binutils screen
 
     if command -v apt-get &>/dev/null; then
@@ -137,10 +138,45 @@ EOF
     fi
 }
 
+setup_firewall() {
+    print_section "Configuring Firewall"
+
+    # Pre-seed iptables-persistent to avoid interactive prompts
+    echo iptables-persistent iptables-persistent/autosave_v4 boolean true | debconf-set-selections 2>/dev/null
+    echo iptables-persistent iptables-persistent/autosave_v6 boolean true | debconf-set-selections 2>/dev/null
+
+    # Install iptables if not present
+    apt-get install -y iptables iptables-persistent > /dev/null 2>&1
+
+    # Open required ports
+    local ports=("22" "80" "443" "700" "8080" "8443" "8880" "2083" "2086" "2087" "10001" "10002" "10003" "10004" "10005" "10006" "10007" "10008" "10010" "10085")
+    for port in "${ports[@]}"; do
+        iptables -I INPUT -p tcp --dport "${port}" -j ACCEPT 2>/dev/null
+    done
+
+    # Save iptables rules
+    if command -v netfilter-persistent &>/dev/null; then
+        netfilter-persistent save 2>/dev/null
+    elif [[ -f /etc/iptables/rules.v4 ]]; then
+        iptables-save > /etc/iptables/rules.v4 2>/dev/null
+    fi
+
+    # If ufw is installed, open ports via ufw too
+    if command -v ufw &>/dev/null; then
+        for port in "${ports[@]}"; do
+            ufw allow "${port}/tcp" > /dev/null 2>&1
+        done
+        echo "y" | ufw enable 2>/dev/null
+    fi
+
+    msg_ok "Firewall configured (all VPN ports open)"
+}
+
 install_all_dependencies() {
     setup_dns
     install_base_packages
     install_optional_packages
+    setup_firewall
     setup_swap
     setup_bbr
     setup_timezone

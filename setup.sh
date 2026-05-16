@@ -8,12 +8,14 @@
 # Protocols: VLESS, VMESS, Trojan (WS/gRPC/XTLS Reality)
 # ============================================================
 
+export DEBIAN_FRONTEND=noninteractive
+
 REPO_OWNER="zizwanphgziz"
 REPO_NAME="freeflowasvpn"
 REPO_URL="https://github.com/${REPO_OWNER}/${REPO_NAME}"
-REPO_BRANCH="devin/1778775736-v2.1-ux-fix"
+REPO_BRANCH="devin/1778798867-v2.2-critical-fixes"
 INSTALL_DIR="/usr/local/lib/freeflow"
-VERSION="2.1.0"
+FF_VERSION="2.2.0"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -28,7 +30,7 @@ echo -e "${CYAN}"
 echo "╔══════════════════════════════════════════════════════╗"
 echo "║                                                      ║"
 echo "║     FreeFlow Auto Script VPN — All In One            ║"
-echo "║     Version: ${VERSION}                                   ║"
+echo "║     Version: ${FF_VERSION}                                   ║"
 echo "║     VLESS · VMESS · Trojan · SSH WS                  ║"
 echo "║                                                      ║"
 echo "╚══════════════════════════════════════════════════════╝"
@@ -42,9 +44,10 @@ fi
 
 # --- OS Check ---
 if [[ -f /etc/os-release ]]; then
-    . /etc/os-release
-    OS_NAME="${ID}"
-    OS_VERSION="${VERSION_ID}"
+    # Source os-release in a subshell to avoid clobbering our variables
+    OS_NAME=$(. /etc/os-release && echo "${ID}")
+    OS_VERSION=$(. /etc/os-release && echo "${VERSION_ID}")
+    PRETTY_NAME=$(. /etc/os-release && echo "${PRETTY_NAME}")
 else
     echo -e " ${RED}[FAIL]${NC} Cannot detect OS"
     exit 1
@@ -147,7 +150,7 @@ source "${INSTALL_DIR}/scripts/core/common.sh"
 
 # --- Setup Directories ---
 setup_directories
-set_version "${VERSION}"
+set_version "${FF_VERSION}"
 echo "${domain}" > "${CONFIG_DIR}/domain"
 
 # --- Install Dependencies ---
@@ -162,6 +165,16 @@ generate_xray_config
 # --- Install Nginx (auto — no prompts) ---
 source "${INSTALL_DIR}/scripts/nginx/install_nginx.sh"
 install_nginx_full
+
+# --- Install SSH WebSocket (auto — no prompts) ---
+source "${INSTALL_DIR}/scripts/ssh/install_ssh_ws.sh"
+install_ssh_ws
+
+# --- Install Ads Blocker (auto — no prompts) ---
+if [[ -f "${INSTALL_DIR}/scripts/tools/ads_blocker.sh" ]]; then
+    source "${INSTALL_DIR}/scripts/tools/ads_blocker.sh"
+    install_ads_blocker 2>/dev/null
+fi
 
 # --- Setup Crons ---
 source "${INSTALL_DIR}/scripts/user/usage_tracker.sh"
@@ -204,7 +217,7 @@ echo -e "${CYAN}"
 echo "╔══════════════════════════════════════════════════════╗"
 echo "║                                                      ║"
 echo "║   FreeFlow ASVPN — Installation Complete!            ║"
-echo "║   Version: ${VERSION}                                     ║"
+echo "║   Version: ${FF_VERSION}                                     ║"
 echo "║                                                      ║"
 echo "╚══════════════════════════════════════════════════════╝"
 echo -e "${NC}"

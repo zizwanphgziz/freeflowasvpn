@@ -564,11 +564,20 @@ renew_ssl() {
     echo -e "$L"
     local domain
     domain=$(get_domain)
-    certbot renew --quiet
-    cp "/etc/letsencrypt/live/${domain}/fullchain.pem" /etc/xray/xray.crt 2>/dev/null
-    cp "/etc/letsencrypt/live/${domain}/privkey.pem" /etc/xray/xray.key 2>/dev/null
-    restart_service nginx
-    msg_ok "SSL certificate renewed"
+
+    if [[ -f /root/.acme.sh/acme.sh ]]; then
+        systemctl stop nginx 2>/dev/null
+        /root/.acme.sh/acme.sh --renew -d "${domain}" --ecc --force 2>&1 | tail -5
+        /root/.acme.sh/acme.sh --installcert -d "${domain}" \
+            --fullchainpath /etc/xray/xray.crt \
+            --keypath /etc/xray/xray.key \
+            --ecc \
+            --reloadcmd "systemctl reload nginx" 2>&1 | tail -3
+        systemctl start nginx 2>/dev/null
+        msg_ok "SSL certificate renewed (acme.sh ECC)"
+    else
+        msg_fail "acme.sh not found — reinstall via setup.sh"
+    fi
 }
 
 reboot_vps() {

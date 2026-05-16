@@ -19,7 +19,8 @@ install_xray_core() {
     bash -c "$(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ install -u root 2>&1 | tail -5
 
     if command -v xray &>/dev/null; then
-        msg_ok "Xray installed: $(xray version | head -1)"
+        systemctl enable xray 2>/dev/null
+        msg_ok "Xray installed and enabled: $(xray version | head -1)"
     else
         msg_fail "Xray installation failed"
         return 1

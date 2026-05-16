@@ -16,7 +16,8 @@ install_nginx() {
 
     apt-get install -y nginx > /dev/null 2>&1
     if command -v nginx &>/dev/null; then
-        msg_ok "Nginx installed"
+        systemctl enable nginx 2>/dev/null
+        msg_ok "Nginx installed and enabled"
     else
         msg_fail "Nginx installation failed"
         return 1
@@ -24,7 +25,7 @@ install_nginx() {
 }
 
 setup_ssl_certificate() {
-    print_section "Setting Up SSL Certificate"
+    print_section "Setting Up SSL Certificate (acme.sh)"
 
     local domain
     domain=$(get_domain)
@@ -34,45 +35,48 @@ setup_ssl_certificate() {
         return 1
     fi
 
-    msg_info "Obtaining SSL certificate for ${domain}..."
+    msg_info "Obtaining SSL certificate for ${domain} via acme.sh..."
 
+    # Stop nginx to free port 80 for standalone verification
     systemctl stop nginx 2>/dev/null
 
-    certbot certonly --standalone \
-        --preferred-challenges http \
-        --agree-tos \
-        --email "admin@${domain}" \
-        -d "${domain}" \
-        --non-interactive 2>&1 | tail -3
+    # Install acme.sh if not present
+    if [[ ! -f /root/.acme.sh/acme.sh ]]; then
+        msg_info "Installing acme.sh..."
+        curl -sL https://get.acme.sh | sh -s email=admin@"${domain}" 2>&1 | tail -3
+    fi
 
-    if [[ -f "/etc/letsencrypt/live/${domain}/fullchain.pem" ]]; then
-        mkdir -p /etc/xray
-        cp "/etc/letsencrypt/live/${domain}/fullchain.pem" /etc/xray/xray.crt
-        cp "/etc/letsencrypt/live/${domain}/privkey.pem" /etc/xray/xray.key
+    # Ensure acme.sh is available
+    if [[ ! -f /root/.acme.sh/acme.sh ]]; then
+        msg_fail "acme.sh installation failed"
+        return 1
+    fi
+
+    # Set Let's Encrypt as default CA
+    /root/.acme.sh/acme.sh --set-default-ca --server letsencrypt 2>/dev/null
+
+    # Issue ECC certificate (ec-256) using standalone mode (port 80)
+    /root/.acme.sh/acme.sh --issue -d "${domain}" --standalone -k ec-256 --force 2>&1 | tail -5
+
+    # Install cert to /etc/xray/
+    mkdir -p /etc/xray
+    /root/.acme.sh/acme.sh --installcert -d "${domain}" \
+        --fullchainpath /etc/xray/xray.crt \
+        --keypath /etc/xray/xray.key \
+        --ecc \
+        --reloadcmd "systemctl reload nginx" 2>&1 | tail -3
+
+    if [[ -f /etc/xray/xray.crt ]] && [[ -f /etc/xray/xray.key ]]; then
         chmod 644 /etc/xray/xray.crt /etc/xray/xray.key
-        msg_ok "SSL certificate obtained from Let's Encrypt"
+        msg_ok "SSL certificate obtained from Let's Encrypt (ECC)"
     else
-        msg_warn "Let's Encrypt cert failed — generating self-signed certificate"
-        msg_info "You can renew to Let's Encrypt later via menu (Renew SSL)"
-        mkdir -p /etc/xray
-        openssl req -x509 -nodes -days 3650 \
-            -newkey rsa:2048 \
-            -keyout /etc/xray/xray.key \
-            -out /etc/xray/xray.crt \
-            -subj "/CN=${domain}/O=FreeFlow/C=MY" 2>/dev/null
-        chmod 644 /etc/xray/xray.crt /etc/xray/xray.key
-        if [[ -f /etc/xray/xray.crt ]]; then
-            msg_ok "Self-signed SSL certificate created"
-        else
-            msg_fail "Could not create SSL certificate"
-            return 1
-        fi
+        msg_fail "SSL certificate generation failed"
+        msg_info "Check: domain DNS must point to this server's IP"
+        msg_info "Check: port 80 must be reachable from the internet"
+        return 1
     fi
 
-    if ! crontab -l 2>/dev/null | grep -q "certbot renew"; then
-        (crontab -l 2>/dev/null; echo "0 3 * * * certbot renew --quiet --deploy-hook 'cp /etc/letsencrypt/live/${domain}/fullchain.pem /etc/xray/xray.crt && cp /etc/letsencrypt/live/${domain}/privkey.pem /etc/xray/xray.key && systemctl reload nginx'") | crontab -
-        msg_ok "SSL auto-renewal configured"
-    fi
+    msg_ok "SSL auto-renewal configured (acme.sh built-in cron)"
 }
 
 generate_nginx_config() {
@@ -101,9 +105,6 @@ generate_nginx_config() {
         ssh_ws_block="
     # --- SSH WebSocket ---
     location /ssh {
-        if (\$http_upgrade != \"Websocket\") {
-            return 404;
-        }
         proxy_redirect off;
         proxy_pass http://127.0.0.1:700;
         proxy_http_version 1.1;
@@ -151,6 +152,19 @@ http {
 }
 NGINXMAIN
 
+    # Detect nginx version for http2 directive compatibility
+    local nginx_ver http2_directive listen_ssl_h2
+    nginx_ver=$(nginx -v 2>&1 | grep -oP '[\d.]+' | head -1)
+    if [[ "$(echo -e "${nginx_ver}\n1.25.1" | sort -V | head -1)" == "1.25.1" ]]; then
+        # nginx >= 1.25.1 — use separate http2 directive
+        http2_directive="    http2 on;"
+        listen_ssl_h2="ssl"
+    else
+        # nginx < 1.25.1 — use http2 in listen directive
+        http2_directive=""
+        listen_ssl_h2="ssl http2"
+    fi
+
     # Site config — Port 443 NOT included (used by Xray Reality)
     cat > "${NGINX_CONF}" <<NGINXEOF
 # ============================================
@@ -173,9 +187,6 @@ server {
 
     # VLESS WebSocket (Non-TLS)
     location ${vless_ws_path} {
-        if (\$http_upgrade != "Websocket") {
-            rewrite /(.*) / break;
-        }
         proxy_redirect off;
         proxy_pass http://127.0.0.1:10001;
         proxy_http_version 1.1;
@@ -216,9 +227,6 @@ server {
 
     # VMESS WebSocket (Non-TLS)
     location ${vmess_ws_path} {
-        if (\$http_upgrade != "Websocket") {
-            return 404;
-        }
         proxy_redirect off;
         proxy_pass http://127.0.0.1:10005;
         proxy_http_version 1.1;
@@ -237,9 +245,6 @@ server {
 
     # Trojan WebSocket (Non-TLS)
     location ${trojan_ws_path} {
-        if (\$http_upgrade != "Websocket") {
-            return 404;
-        }
         proxy_redirect off;
         proxy_pass http://127.0.0.1:10007;
         proxy_http_version 1.1;
@@ -266,13 +271,13 @@ ${ssh_ws_block}
 
 # --- TLS Ports (NOT 443 — that's Xray Reality) ---
 server {
-    listen 8443 ssl;
-    listen [::]:8443 ssl;
-    listen 2083 ssl;
-    listen [::]:2083 ssl;
-    listen 2087 ssl;
-    listen [::]:2087 ssl;
-    http2 on;
+    listen 8443 ${listen_ssl_h2};
+    listen [::]:8443 ${listen_ssl_h2};
+    listen 2083 ${listen_ssl_h2};
+    listen [::]:2083 ${listen_ssl_h2};
+    listen 2087 ${listen_ssl_h2};
+    listen [::]:2087 ${listen_ssl_h2};
+${http2_directive}
 
     server_name ${domain};
 
@@ -283,9 +288,6 @@ server {
 
     # VLESS WebSocket (TLS)
     location ${vless_ws_path} {
-        if (\$http_upgrade != "Websocket") {
-            rewrite /(.*) / break;
-        }
         proxy_redirect off;
         proxy_pass http://127.0.0.1:10001;
         proxy_http_version 1.1;
@@ -326,9 +328,6 @@ server {
 
     # VMESS WebSocket (TLS)
     location ${vmess_ws_path} {
-        if (\$http_upgrade != "Websocket") {
-            return 404;
-        }
         proxy_redirect off;
         proxy_pass http://127.0.0.1:10005;
         proxy_http_version 1.1;
@@ -347,9 +346,6 @@ server {
 
     # Trojan WebSocket (TLS)
     location ${trojan_ws_path} {
-        if (\$http_upgrade != "Websocket") {
-            return 404;
-        }
         proxy_redirect off;
         proxy_pass http://127.0.0.1:10007;
         proxy_http_version 1.1;

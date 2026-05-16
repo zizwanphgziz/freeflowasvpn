@@ -57,15 +57,21 @@ do_update() {
         return 1
     fi
 
-    # Extract
+    # Extract — GitHub replaces / with - in archive directory names
     cd "${tmp_dir}" || return 1
     tar xzf update.tar.gz
-    local extract_dir="${tmp_dir}/${REPO_NAME}-${REPO_BRANCH}"
+    local branch_sanitized
+    branch_sanitized=$(echo "${REPO_BRANCH}" | tr '/' '-')
+    local extract_dir="${tmp_dir}/${REPO_NAME}-${branch_sanitized}"
 
     if [[ ! -d "${extract_dir}" ]]; then
-        msg_fail "Extraction failed"
-        rm -rf "${tmp_dir}"
-        return 1
+        # Fallback: find the extracted directory
+        extract_dir=$(find "${tmp_dir}" -maxdepth 1 -type d -name "${REPO_NAME}-*" | head -1)
+        if [[ -z "${extract_dir}" ]]; then
+            msg_fail "Extraction failed"
+            rm -rf "${tmp_dir}"
+            return 1
+        fi
     fi
 
     # Backup current installation
