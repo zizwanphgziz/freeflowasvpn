@@ -435,3 +435,132 @@ Ahmad noted the script should support multipath including `/` path. Current beha
 
 **Server-side: All 10 bugs fixed. Server verified working externally.**
 **Client-side: Ahmad's V2rayNG config was manually entered with wrong server IP and wrong path — needs to use FreeFlow-generated share links.**
+
+## Session 5b — v2.1.1 Premium Menu + Critical Fixes (Parallel Session)
+
+### Ahmad's Feedback (v2.1 Test - Attempt 1)
+- Installation still prompting questions (timezone, etc.) — caused by REPO_BRANCH pointing to init-branch
+- Fix: Updated REPO_BRANCH to point to fix branch, removed timezone prompt from dependencies.sh
+
+### Ahmad's Feedback (v2.1 Test - Attempt 2)
+- Xray still failed to restart — jq parse error (control characters U+0000-U+001F in JSON)
+- Nginx SSL cert missing — certbot failed, /etc/xray/xray.crt not found
+- **Menu needs premium visual overhaul** — Ahmad showed JinGGo screenshots:
+  > "Use Jinggo's script as reference... But I want you to do the most premium script menu visually you can fit Freeflow... Give me some face please... Give me the maximum effort you can..."
+
+### v2.1.1 Fixes Applied
+
+#### 1. Premium JinGGo-Style Menu (COMPLETE REWRITE)
+- Two-column layout with `[ XX ]` number format matching JinGGo exactly
+- Status bars: `SSH : ON   XRAY : ON   TOTAL USER : [5]`
+- Section headers: `↙ VPN MENU ↘` and `↙ SYSTEM MENU ↘`
+- Main menu fits on one screen without scrolling (16 compact items vs old 26)
+- Sub-menus for SSH, VLESS, VMESS, Trojan, WARP all with premium styling
+- User counts and service status displayed in each sub-menu header
+
+#### 2. Xray Config jq Parse Error Fix
+- Root cause: variables (UUID, domain, Reality keys) could contain control characters from shell commands
+- Fix: sanitize ALL variables with `tr -d '[:cntrl:]'` before writing JSON config
+- Added JSON validation with `jq empty` after config generation, with auto-fix if broken
+- Triple fallback UUID generation: `/proc/sys/kernel/random/uuid` → `uuidgen` → `openssl rand`
+
+#### 3. Nginx SSL Certificate Fix
+- Root cause: certbot failing silently, then nginx can't find /etc/xray/xray.crt
+- Fix: self-signed certificate fallback when Let's Encrypt fails
+- Nginx will ALWAYS start now regardless of certbot outcome
+- Can upgrade to Let's Encrypt later via menu "Renew SSL"
+
+#### 4. User Management Hardening
+- Clean xray config (strip control chars) before every jq modification
+- Validate jq output JSON before replacing config file
+- Sanitize UUID and username in create, reactivate, and trial functions
+
+#### 5. setup.sh Archive Extraction Fix
+- Root cause: branch name `devin/1778775736-v2.1-ux-fix` contains `/`
+- GitHub archives replace `/` with `-` in directory names
+- Script was looking for `freeflowasvpn-devin/1778775736-v2.1-ux-fix` but actual dir was `freeflowasvpn-devin-1778775736-v2.1-ux-fix`
+- Fix: `tr '/' '-'` on branch name for directory lookup, with wildcard fallback
+- Added validation that common.sh exists before sourcing (fail-fast instead of silent)
+- This caused the "1 second installation" bug — nothing was actually installed
+
+### Ahmad's Feedback (v2.1.1 Test)
+- setup.sh completed in 1 second — nothing installed
+- Root cause: branch name `/` converted to `-` in GitHub archive directory names
+- Fix pushed: `tr '/' '-'` on branch name for directory lookup
+
+## Session 6b — MoClaw AI VPS Audit Report (2026-05-15, Parallel Session)
+
+Ahmad got help from MoClaw AI who accessed the live VPS (103.200.219.100, Debian 13, madvpn.us.kg) and did a complete audit. MoClaw fixed the VPS directly and VLESS is now working. Below is the full record of findings.
+
+### Root Causes Identified by MoClaw
+
+**RC-1: Architecture not validated before deployment**
+- 3,525 lines written before any real VPS test
+- Nginx → Xray layered failures have no cross-layer logging
+
+**RC-2: Cascading silent bugs (10 bugs stacked)**
+- REPO_BRANCH in common.sh pointed to old branch → auto-update rolled back fixes every 4AM
+- WebSocket case sensitivity ("Websocket" vs "websocket") → WS upgrade silently failed
+- No firewall rules → ports blocked by kernel (red herring)
+- Nginx `http2` directive incompatible → degraded config on older versions
+
+**RC-3: Wrong SSL tool (certbot vs acme.sh)**
+- All reference scripts use acme.sh, not certbot
+- certbot conflicts with Nginx on port 80 during renewal
+- Should use acme.sh standalone mode
+
+**RC-4: Client misconfiguration masked as server bug**
+- Server was actually 100% working in Session 7
+- V2rayNG had wrong server IP (172.66.169.187 = Cloudflare CDN, not VPS)
+- Wrong path: `/` (decoy page, not `/vless-ws`)
+
+### Bugs Found by MoClaw (Full Audit of 12 Scripts)
+
+#### Bugs Fixed on Live VPS:
+| # | Bug | Fix Applied |
+|---|-----|-------------|
+| F1 | common.sh REPO_BRANCH = v2.1 (auto-update rollback every 4AM) | Changed to v2.2 branch |
+| F2 | Port 8443 returning HTTP 400 for WS (http2 + WS conflict) | Removed http2 from WS block |
+| F3 | wss_converter.sh default path was "/" instead of "/vless-ws" | Fixed path |
+| F4 | gRPC location blocks on non-TLS ports (no h2c) | Removed gRPC from non-TLS |
+| F5 | XHTTP missing proxy_buffering off | Added proxy_buffering off |
+
+#### Bugs Not Yet Fixed in Source Code:
+| # | Severity | Bug | Impact |
+|---|----------|-----|--------|
+| A | CRITICAL | Ads blocker appends 82,628 lines to /etc/hosts — linear DNS scan | DNS perf kill |
+| B | CRITICAL | Usage stats never reset — double-counting data usage | Data limits trigger early |
+| C | HIGH | "Check User Login" always shows zero (loglevel="warning") | Online check broken |
+| D | HIGH | Trial account expiry date-only (1hr trial lasts 25hrs) | Trials never expire on time |
+| E | HIGH | WARP menu option 4 calls undefined delete_warp_route() | Menu crash |
+| F | HIGH | Telegram bot reactivate doesn't re-add UUID to Xray | Bot reactivate leaves blocked |
+| G | MEDIUM | Backup tar append on gzip fails — config files missing | Incomplete backups |
+| H | MEDIUM | WARP fails on Debian 13 (lsb_release missing) | WARP broken on Deb 13 |
+| I | MEDIUM | Telegram bot token in plaintext in systemd | Security issue |
+| J | MEDIUM | SSH WS proxy missing WebSocket frame parsing | Breaks standard SSH-WS tools |
+| K | LOW | SSH auto-kill is a placeholder (does nothing) | Feature doesn't work |
+
+### Nginx Config Changes (MoClaw deployed to live VPS)
+1. Removed `http2` from port 8443 (WS needs HTTP/1.1, not HTTP/2)
+2. Created separate gRPC-only server block (ports 2083, 2087) with `http2 on`
+3. Added `proxy_buffering off` to all XHTTP locations
+4. Added `proxy_read_timeout 86400s` to all WebSocket locations
+5. Removed gRPC from non-TLS block (gRPC needs HTTP/2, can't work on plain HTTP)
+
+### Cloudflare Setup (MoClaw findings)
+- SSL/TLS mode must be **FLEXIBLE** (Full breaks WebSocket through CF)
+- WebSockets must be **ON** in CF Network settings
+- gRPC must be **ON** in CF Network settings
+- DNS A record must be **PROXIED** (orange cloud ON)
+- For V2rayNG with CF CDN: use CF IP as Address, domain as Host header
+
+### Live VPS Status After MoClaw Fixes
+- Nginx: running, config valid
+- Xray: running
+- SSH-WS: running
+- SSL: valid until Aug 13, 2026 (acme.sh ECC cert)
+- WS port 80: HTTP 101 OK
+- WS port 8080: HTTP 101 OK
+- WS port 8443 TLS: HTTP 101 OK
+- VLESS confirmed working via Netmod, Nekobox
+- Users: ahmad, mad (both expire 2026-05-16)

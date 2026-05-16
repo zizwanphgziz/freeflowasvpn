@@ -191,6 +191,55 @@
 | Cert path | /etc/xray/xray.crt + .key | /etc/xray/xray.crt + .key |
 | Used by | FreeFlow (now matches reference) | JinGGo, NevermoreSSH, Cabrata, all others |
 
+## Phase 13: MoClaw VPS Audit — Findings Recorded (Parallel Session)
+- [x] MoClaw AI accessed live VPS and did complete 12-script audit
+- [x] 5 bugs fixed directly on VPS (F1-F5)
+- [x] 11 additional bugs identified in source code (A-K)
+- [x] Nginx config redesigned: separate WS (8443) and gRPC (2083/2087) blocks
+- [x] VLESS confirmed working via Netmod + Nekobox
+- [x] Cloudflare settings documented (Flexible SSL, WS ON, gRPC ON)
+
+## Phase 11: v2.3 — Source Code Fixes (from MoClaw audit) — PLANNED
+
+### Priority 1 — RED (Must Fix)
+- [ ] Nginx config rewrite: separate WS + gRPC blocks, proxy_buffering, proxy_read_timeout
+- [ ] SSL: migrate certbot to acme.sh (ECC ec-256)
+- [ ] Ads blocker: replace /etc/hosts with dnsmasq (BUG A)
+- [ ] Xray loglevel "warning" to "none" for access.log (BUG C)
+- [ ] CF-aware setup + share links (BUG RC-4)
+- [ ] Firewall rules during installation
+- [ ] setup.sh ordering: SSH WS before Nginx config (BUG #2)
+- [ ] REPO_BRANCH to stable branch
+
+### Priority 2 — ORANGE (Should Fix)
+- [ ] Usage stats delta tracking (BUG B)
+- [ ] Trial expiry hour precision (BUG D)
+- [ ] Add delete_warp_route() function (BUG E)
+- [ ] Telegram bot reactivate fix (BUG F)
+- [ ] Post-install verify script
+
+### Priority 3 — YELLOW (Nice to Fix)
+- [ ] Backup tar fix (BUG G)
+- [ ] WARP Debian 13 fix (BUG H)
+- [ ] Bot token security (BUG I)
+- [ ] SSH WS proxy frame parsing — websockify (BUG J)
+- [ ] CF setup guide in menu
+
+### Priority 4 — GREEN (Enhancements)
+- [ ] SSH auto-kill implementation (BUG K)
+- [ ] Reality destination configurable
+
+### What Works Well (Don't Change — per MoClaw)
+- Nginx + Xray split architecture
+- Shell menu user management (add/delete/expire/reactivate)
+- Per-user UUID + email tagging in Xray
+- jq-based Xray config manipulation
+- Multiple protocol support (VLESS/VMESS/Trojan + Reality)
+- Xray Stats API design (just needs delta fix)
+- WARP domain routing via Xray outbound
+- Telegram bot inline keyboard UI
+- Trial account system
+
 ## Changelog
 | Date | Change |
 |------|--------|
@@ -215,3 +264,8 @@
 | 2026-05-15 | Session 7: External verification — WebSocket 101 on both port 80 and 8443 from Devin VM |
 | 2026-05-15 | Session 7: Root cause — V2rayNG config had wrong server IP (Cloudflare) and wrong path (/) |
 | 2026-05-15 | Session 7: **Server confirmed 100% working.** Pending: re-test with correct client config |
+| 2026-05-15 | MoClaw AI VPS audit — 5 bugs fixed on VPS, 11 bugs identified in source |
+| 2026-05-15 | MoClaw confirmed VLESS working (Netmod + Nekobox) |
+| 2026-05-15 | Nginx config redesigned: separate WS + gRPC server blocks |
+| 2026-05-15 | Cloudflare settings documented (Flexible SSL, WS ON, gRPC ON) |
+| 2026-05-15 | v2.3 fix plan created from MoClaw audit (17 items across 4 priorities) |
