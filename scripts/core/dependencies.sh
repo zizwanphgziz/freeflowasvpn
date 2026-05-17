@@ -13,7 +13,7 @@ install_base_packages() {
     apt-get install -y \
         wget curl openssl sudo coreutils gnupg bc \
         lsof socat unzip zip jq htop net-tools \
-        cron vnstat python3 certbot \
+        cron vnstat python3 \
         binutils screen
 
     if command -v apt-get &>/dev/null; then
@@ -72,8 +72,8 @@ setup_dns() {
 setup_timezone() {
     print_section "Setting Timezone"
 
-    read -rp " Enter timezone (default: Asia/Kuala_Lumpur): " tz
-    tz="${tz:-Asia/Kuala_Lumpur}"
+    # Auto-set timezone — no prompt during install
+    local tz="Asia/Kuala_Lumpur"
 
     if timedatectl set-timezone "${tz}" 2>/dev/null; then
         msg_ok "Timezone set to ${tz}"

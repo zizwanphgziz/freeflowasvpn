@@ -1,9 +1,9 @@
 #!/bin/bash
 # ============================================================
-# FreeFlow ASVPN - Main Menu
+# FreeFlow ASVPN - Premium Menu System
+# Styled after JinGGo VPN — compact, two-column, premium look
 # ============================================================
 
-# Determine install location
 if [[ -d "/usr/local/lib/freeflow/scripts" ]]; then
     SCRIPT_BASE="/usr/local/lib/freeflow/scripts"
 else
@@ -12,135 +12,103 @@ fi
 
 source "${SCRIPT_BASE}/core/common.sh"
 
-show_service_status() {
-    local services=("xray" "nginx" "ssh-ws")
-    echo -e " ${BOLD}Service Status${NC}"
-    for svc in "${services[@]}"; do
-        if systemctl is-active --quiet "${svc}" 2>/dev/null; then
-            echo -e "   ${GREEN}●${NC} ${svc}"
-        elif systemctl is-enabled --quiet "${svc}" 2>/dev/null; then
-            echo -e "   ${RED}●${NC} ${svc} (stopped)"
-        else
-            echo -e "   ${YELLOW}○${NC} ${svc} (not installed)"
-        fi
-    done
+# --- Separator line ---
+L="${CYAN}══════════════════════════════════════════════════════${NC}"
 
-    # WARP status
-    if [[ -f "${CONFIG_DIR}/modules/warp_installed" ]]; then
-        if warp-cli status 2>/dev/null | grep -q "Connected"; then
-            echo -e "   ${GREEN}●${NC} warp"
-        elif systemctl is-active --quiet wg-quick@warp 2>/dev/null; then
-            echo -e "   ${GREEN}●${NC} warp (wireguard)"
-        else
-            echo -e "   ${YELLOW}●${NC} warp (disconnected)"
-        fi
+# --- Count users ---
+count_users() {
+    local count=0
+    for f in "${USER_DB}/$1/active/"*; do
+        [[ -f "${f}" ]] && count=$((count + 1))
+    done
+    echo "${count}"
+}
+
+# --- Service status helper ---
+svc_status() {
+    if systemctl is-active --quiet "$1" 2>/dev/null; then
+        echo -e "${GREEN}ON${NC}"
     else
-        echo -e "   ${YELLOW}○${NC} warp (not installed)"
+        echo -e "${RED}OFF${NC}"
     fi
 }
 
-show_server_info() {
-    local domain ip version uptime_info
-    domain=$(get_domain)
-    ip=$(get_server_ip)
-    version=$(get_installed_version)
-    uptime_info=$(uptime -p 2>/dev/null || uptime | awk -F'( |,)' '{print $5,$6}')
-
-    echo -e " ${CYAN}Domain${NC}  : ${domain:-Not set}"
-    echo -e " ${CYAN}IP${NC}      : ${ip}"
-    echo -e " ${CYAN}Version${NC} : ${version}"
-    echo -e " ${CYAN}Uptime${NC}  : ${uptime_info}"
-    echo -e " ${CYAN}OS${NC}      : $(detect_os; echo "${OS_PRETTY}")"
-}
+# =============================================
+#  MAIN MENU
+# =============================================
 
 main_menu() {
     while true; do
-        print_header
-        show_server_info
-        echo ""
-        show_service_status
-        echo ""
-        print_line
-        echo -e " ${BOLD}${WHITE}VLESS USER MANAGEMENT${NC}"
-        print_line
-        echo -e "  ${GREEN}1${NC}.  Add VLESS User"
-        echo -e "  ${GREEN}2${NC}.  Delete VLESS User"
-        echo -e "  ${GREEN}3${NC}.  Renew VLESS User"
-        echo -e "  ${GREEN}4${NC}.  Reactivate Expired User"
-        echo -e "  ${GREEN}5${NC}.  List Active Users"
-        echo -e "  ${GREEN}6${NC}.  List Expired Users"
-        echo -e "  ${GREEN}7${NC}.  User Data Usage"
-        echo ""
-        print_line
-        echo -e " ${BOLD}${WHITE}SSH WEBSOCKET${NC}"
-        print_line
-        echo -e "  ${GREEN}8${NC}.  Add SSH User"
-        echo -e "  ${GREEN}9${NC}.  Delete SSH User"
-        echo -e "  ${GREEN}10${NC}. List SSH Users"
-        echo ""
-        print_line
-        echo -e " ${BOLD}${WHITE}MODULES${NC}"
-        print_line
-        echo -e "  ${GREEN}11${NC}. Install/Uninstall SSH WebSocket"
-        echo -e "  ${GREEN}12${NC}. Install/Uninstall WARP"
-        echo -e "  ${GREEN}13${NC}. WARP Domain Routing"
-        echo ""
-        print_line
-        echo -e " ${BOLD}${WHITE}SERVER MANAGEMENT${NC}"
-        print_line
-        echo -e "  ${GREEN}14${NC}. Restart All Services"
-        echo -e "  ${GREEN}15${NC}. Check Xray Config"
-        echo -e "  ${GREEN}16${NC}. View Xray Logs"
-        echo -e "  ${GREEN}17${NC}. Speedtest"
-        echo -e "  ${GREEN}18${NC}. Server Bandwidth (vnstat)"
-        echo -e "  ${GREEN}19${NC}. Change Domain"
-        echo -e "  ${GREEN}20${NC}. Renew SSL Certificate"
-        echo ""
-        print_line
-        echo -e " ${BOLD}${WHITE}SYSTEM${NC}"
-        print_line
-        echo -e "  ${GREEN}21${NC}. Update Script"
-        echo -e "  ${GREEN}22${NC}. Auto Update Settings"
-        echo -e "  ${GREEN}23${NC}. Set Auto Reboot"
-        echo -e "  ${GREEN}24${NC}. Telegram Bot Setup"
-        echo -e "  ${GREEN}25${NC}. System Info"
-        echo -e "  ${GREEN}26${NC}. Backup/Restore"
-        echo ""
-        print_line
-        echo -e "  ${RED}0${NC}.  Exit"
-        print_line
-        echo ""
-        read -rp " Select menu [0-26]: " menu_choice
+        clear
+        local domain ip xray_ver kernel_ver cert_expiry
+        domain=$(get_domain)
+        ip=$(get_server_ip)
+        xray_ver=$(xray version 2>/dev/null | head -1 | awk '{print $2}' || echo "N/A")
+        kernel_ver=$(uname -r)
+        detect_os
 
-        case "${menu_choice}" in
-            1)  source "${SCRIPT_BASE}/user/manage_user.sh"; add_vless_user ;;
-            2)  source "${SCRIPT_BASE}/user/manage_user.sh"; delete_vless_user ;;
-            3)  source "${SCRIPT_BASE}/user/manage_user.sh"; renew_vless_user ;;
-            4)  source "${SCRIPT_BASE}/user/manage_user.sh"; reactivate_vless_user ;;
-            5)  source "${SCRIPT_BASE}/user/manage_user.sh"; list_active_users ;;
-            6)  source "${SCRIPT_BASE}/user/manage_user.sh"; list_expired_users ;;
-            7)  usage_menu ;;
-            8)  ssh_add_user ;;
-            9)  ssh_delete_user ;;
-            10) ssh_list_users ;;
-            11) ssh_ws_menu ;;
-            12) warp_menu ;;
-            13) source "${SCRIPT_BASE}/warp/install_warp.sh"; add_warp_route ;;
-            14) restart_all_services ;;
-            15) check_xray_config ;;
-            16) view_xray_logs ;;
-            17) run_speedtest ;;
-            18) show_bandwidth ;;
-            19) change_domain ;;
-            20) renew_ssl ;;
-            21) source "${SCRIPT_BASE}/update/auto_update.sh"; check_update; [[ $? -eq 2 ]] && confirm "Update now?" && do_update ;;
-            22) source "${SCRIPT_BASE}/update/auto_update.sh"; setup_auto_update_cron ;;
-            23) setup_auto_reboot ;;
-            24) source "${SCRIPT_BASE}/telegram/setup_bot.sh"; setup_telegram_bot ;;
-            25) system_info ;;
-            26) backup_restore_menu ;;
-            0)  echo -e "\n ${GREEN}Goodbye!${NC}\n"; exit 0 ;;
-            *)  msg_warn "Invalid option" ;;
+        local ssh_c xray_c
+        ssh_c=$(count_users "ssh")
+        xray_c=$(( $(count_users "vless") + $(count_users "vmess") + $(count_users "trojan") ))
+
+        if [[ -f /etc/xray/xray.crt ]]; then
+            cert_expiry=$(openssl x509 -enddate -noout -in /etc/xray/xray.crt 2>/dev/null | cut -d= -f2)
+        else
+            cert_expiry="No Certificate"
+        fi
+
+        echo -e "$L"
+        echo -e "    ${BOLD}${WHITE}FreeFlow Auto Script VPN — Premium${NC}"
+        echo -e "     ${PURPLE}github.com/zizwanphgziz/freeflowasvpn${NC}"
+        echo -e "$L"
+        echo -e " OS VERSION          : ${WHITE}${OS_PRETTY}${NC}"
+        echo -e " KERNEL VERSION      : ${WHITE}${kernel_ver}${NC}"
+        echo -e " XRAY CORE VERSION   : ${WHITE}${xray_ver}${NC}"
+        echo -e " EXP DATE CERT XRAY  : ${WHITE}${cert_expiry}${NC}"
+        echo -e "$L"
+        echo -e "    TOTAL SSH : ${GREEN}[${ssh_c}]${NC}    TOTAL XRAY : ${GREEN}[${xray_c}]${NC}"
+        echo -e "$L"
+        echo -e "            ${BOLD}${YELLOW}↙ VPN MENU ↘${NC}"
+        echo -e "$L"
+        echo -e " ${GREEN}[ 01 ]${NC} MENU SSH              ${GREEN}[ 02 ]${NC} MENU XRAY VLESS"
+        echo -e " ${GREEN}[ 03 ]${NC} MENU XRAY VMESS       ${GREEN}[ 04 ]${NC} MENU XRAY TROJAN"
+        echo -e "$L"
+        echo -e "            ${BOLD}${YELLOW}↙ SYSTEM MENU ↘${NC}"
+        echo -e "$L"
+        echo -e " ${GREEN}[ 05 ]${NC} ADD/CHANGE DOMAIN      ${GREEN}[ 11 ]${NC} SPEEDTEST VPS"
+        echo -e " ${GREEN}[ 06 ]${NC} CHANGE DNS SERVER      ${GREEN}[ 12 ]${NC} STREAM GEO LOCATION"
+        echo -e " ${GREEN}[ 07 ]${NC} RESTART ALL SERVICE    ${GREEN}[ 13 ]${NC} SERVICE/PORT INFO"
+        echo -e " ${GREEN}[ 08 ]${NC} CHECK RAM USAGE        ${GREEN}[ 14 ]${NC} SERVICE STATUS"
+        echo -e " ${GREEN}[ 09 ]${NC} REBOOT VPS             ${GREEN}[ 15 ]${NC} SOCKS WARP"
+        echo -e " ${GREEN}[ 10 ]${NC} UPDATE SCRIPT          ${GREEN}[ 16 ]${NC} ADS BLOCKER"
+        echo -e "$L"
+        echo -e " ${RED}[  0 ]${NC} EXIT MENU"
+        echo -e "$L"
+        echo -e "$L"
+        echo -e " SCRIPT VERSION : ${WHITE}FREEFLOW v$(get_installed_version)${NC}"
+        echo -e "$L"
+        echo ""
+        read -rp "    Please select an option : " opt
+
+        case "${opt}" in
+            01|1) menu_ssh ;;
+            02|2) menu_vless ;;
+            03|3) menu_vmess ;;
+            04|4) menu_trojan ;;
+            05|5) change_domain ;;
+            06|6) source "${SCRIPT_BASE}/tools/dns_changer.sh"; change_dns ;;
+            07|7) restart_all_services ;;
+            08|8) source "${SCRIPT_BASE}/tools/ram_monitor.sh"; show_ram_usage ;;
+            09|9) reboot_vps ;;
+            10) source "${SCRIPT_BASE}/update/auto_update.sh"; check_update; [[ $? -eq 2 ]] && confirm "Update now?" && do_update ;;
+            11) run_speedtest ;;
+            12) source "${SCRIPT_BASE}/tools/netflix_checker.sh"; check_netflix_region ;;
+            13) service_port_info ;;
+            14) service_status ;;
+            15) menu_warp ;;
+            16) menu_ads ;;
+            00|0) echo -e "\n ${GREEN}Goodbye!${NC}\n"; exit 0 ;;
+            *) msg_warn "Invalid option" ;;
         esac
 
         echo ""
@@ -148,26 +116,380 @@ main_menu() {
     done
 }
 
-# --- Sub-menus and helper functions ---
+# =============================================
+#  SSH MENU
+# =============================================
 
-usage_menu() {
-    print_section "User Data Usage"
-    echo -e "  ${GREEN}1${NC}. Show all users usage"
-    echo -e "  ${GREEN}2${NC}. Show specific user usage"
-    echo -e "  ${GREEN}3${NC}. Back"
+menu_ssh() {
+    while true; do
+        clear
+        local ssh_st sshws_st user_c
+        ssh_st=$(svc_status sshd)
+        sshws_st=$(if [[ -f "${CONFIG_DIR}/modules/ssh_ws_installed" ]]; then svc_status ssh-ws; else echo -e "${RED}OFF${NC}"; fi)
+        user_c=$(count_users "ssh")
+
+        echo -e "$L"
+        echo -e "              ${BOLD}${YELLOW}↙ MENU SSH ↘${NC}"
+        echo -e "$L"
+        echo -e " SSH : ${ssh_st}   SSHWS : ${sshws_st}   TOTAL USER : ${WHITE}${user_c}${NC}"
+        echo -e "$L"
+        echo -e " ${GREEN}[ 01 ]${NC} CREATE NEW USER        ${GREEN}[ 06 ]${NC} LIST USER INFORMATION"
+        echo -e " ${GREEN}[ 02 ]${NC} CREATE TRIAL USER      ${GREEN}[ 07 ]${NC} SET AUTO KILL LOGIN"
+        echo -e " ${GREEN}[ 03 ]${NC} EXTEND ACCOUNT ACTIVE  ${GREEN}[ 08 ]${NC} DISPLAY USER MULTILOGIN"
+        echo -e " ${GREEN}[ 04 ]${NC} DELETE ACTIVE USER     ${GREEN}[ 09 ]${NC} INSTALL SSHWS"
+        echo -e " ${GREEN}[ 05 ]${NC} CHECK USER LOGIN"
+        echo -e "$L"
+        echo -e " ${RED}[  0 ]${NC} EXIT TO MENU"
+        echo -e "$L"
+        echo ""
+        read -rp "    Please select an option : " opt
+
+        case "${opt}" in
+            01|1) ssh_add_user ;;
+            02|2) ssh_trial_user ;;
+            03|3) ssh_renew_user ;;
+            04|4) ssh_delete_user ;;
+            05|5) ssh_check_login ;;
+            06|6) ssh_list_users ;;
+            07|7) ssh_auto_kill ;;
+            08|8) ssh_multilogin ;;
+            09|9) ssh_ws_toggle ;;
+            00|0) return ;;
+            *) msg_warn "Invalid option" ;;
+        esac
+        echo ""
+        read -rp " Press Enter to continue..."
+    done
+}
+
+# =============================================
+#  VLESS MENU
+# =============================================
+
+menu_vless() {
+    while true; do
+        clear
+        local xray_st xray_none xray_xhttp user_c
+        xray_st=$(svc_status xray)
+        xray_none=$([[ -f /etc/xray/config.json ]] && echo -e "${GREEN}ON${NC}" || echo -e "${RED}OFF${NC}")
+        xray_xhttp=$([[ -f /etc/xray/config.json ]] && echo -e "${GREEN}ON${NC}" || echo -e "${RED}OFF${NC}")
+        user_c=$(count_users "vless")
+
+        echo -e "$L"
+        echo -e "           ${BOLD}${YELLOW}↙ MENU XRAY VLESS ↘${NC}"
+        echo -e "$L"
+        echo -e " XRAY : ${xray_st}   XRAY NONE : ${xray_none}   XRAY XHTTP : ${xray_xhttp}   TOTAL USER : ${WHITE}${user_c}${NC}"
+        echo -e "$L"
+        echo -e " ${GREEN}[ 01 ]${NC} CREATE NEW USER        ${GREEN}[ 05 ]${NC} CHECK USER LOGIN"
+        echo -e " ${GREEN}[ 02 ]${NC} CREATE TRIAL USER      ${GREEN}[ 06 ]${NC} LIST USER"
+        echo -e " ${GREEN}[ 03 ]${NC} EXTEND ACCOUNT ACTIVE  ${GREEN}[ 07 ]${NC} RENEW XRAY CERTIFICATION"
+        echo -e " ${GREEN}[ 04 ]${NC} DELETE ACTIVE USER     ${GREEN}[ 08 ]${NC} CHANGE PORT XRAY"
+        echo -e "$L"
+        echo -e " ${RED}[  0 ]${NC} EXIT TO MENU"
+        echo -e "$L"
+        echo ""
+        read -rp "    Please select an option : " opt
+
+        source "${SCRIPT_BASE}/user/manage_user.sh"
+        case "${opt}" in
+            01|1) add_vless_user ;;
+            02|2) create_trial_account "vless" ;;
+            03|3) renew_vless_user ;;
+            04|4) delete_vless_user ;;
+            05|5) check_login_users ;;
+            06|6) list_protocol_active "vless" ;;
+            07|7) renew_ssl ;;
+            08|8) change_xray_port ;;
+            00|0) return ;;
+            *) msg_warn "Invalid option" ;;
+        esac
+        echo ""
+        read -rp " Press Enter to continue..."
+    done
+}
+
+# =============================================
+#  VMESS MENU
+# =============================================
+
+menu_vmess() {
+    while true; do
+        clear
+        local xray_st user_c
+        xray_st=$(svc_status xray)
+        user_c=$(count_users "vmess")
+
+        echo -e "$L"
+        echo -e "           ${BOLD}${YELLOW}↙ MENU XRAY VMESS ↘${NC}"
+        echo -e "$L"
+        echo -e " XRAY : ${xray_st}   TOTAL USER : ${WHITE}${user_c}${NC}"
+        echo -e "$L"
+        echo -e " ${GREEN}[ 01 ]${NC} CREATE NEW USER        ${GREEN}[ 05 ]${NC} CHECK USER LOGIN"
+        echo -e " ${GREEN}[ 02 ]${NC} CREATE TRIAL USER      ${GREEN}[ 06 ]${NC} LIST USER"
+        echo -e " ${GREEN}[ 03 ]${NC} EXTEND ACCOUNT ACTIVE  ${GREEN}[ 07 ]${NC} RENEW XRAY CERTIFICATION"
+        echo -e " ${GREEN}[ 04 ]${NC} DELETE ACTIVE USER     ${GREEN}[ 08 ]${NC} USER DATA USAGE"
+        echo -e "$L"
+        echo -e " ${RED}[  0 ]${NC} EXIT TO MENU"
+        echo -e "$L"
+        echo ""
+        read -rp "    Please select an option : " opt
+
+        source "${SCRIPT_BASE}/user/manage_user.sh"
+        case "${opt}" in
+            01|1) add_vmess_user ;;
+            02|2) create_trial_account "vmess" ;;
+            03|3) renew_vmess_user ;;
+            04|4) delete_vmess_user ;;
+            05|5) check_login_users ;;
+            06|6) list_protocol_active "vmess" ;;
+            07|7) renew_ssl ;;
+            08|8) source "${SCRIPT_BASE}/user/usage_tracker.sh"; show_usage ;;
+            00|0) return ;;
+            *) msg_warn "Invalid option" ;;
+        esac
+        echo ""
+        read -rp " Press Enter to continue..."
+    done
+}
+
+# =============================================
+#  TROJAN MENU
+# =============================================
+
+menu_trojan() {
+    while true; do
+        clear
+        local xray_st user_c
+        xray_st=$(svc_status xray)
+        user_c=$(count_users "trojan")
+
+        echo -e "$L"
+        echo -e "          ${BOLD}${YELLOW}↙ MENU XRAY TROJAN ↘${NC}"
+        echo -e "$L"
+        echo -e " XRAY : ${xray_st}   TOTAL USER : ${WHITE}${user_c}${NC}"
+        echo -e "$L"
+        echo -e " ${GREEN}[ 01 ]${NC} CREATE NEW USER        ${GREEN}[ 05 ]${NC} CHECK USER LOGIN"
+        echo -e " ${GREEN}[ 02 ]${NC} CREATE TRIAL USER      ${GREEN}[ 06 ]${NC} LIST USER"
+        echo -e " ${GREEN}[ 03 ]${NC} EXTEND ACCOUNT ACTIVE  ${GREEN}[ 07 ]${NC} RENEW XRAY CERTIFICATION"
+        echo -e " ${GREEN}[ 04 ]${NC} DELETE ACTIVE USER     ${GREEN}[ 08 ]${NC} USER DATA USAGE"
+        echo -e "$L"
+        echo -e " ${RED}[  0 ]${NC} EXIT TO MENU"
+        echo -e "$L"
+        echo ""
+        read -rp "    Please select an option : " opt
+
+        source "${SCRIPT_BASE}/user/manage_user.sh"
+        case "${opt}" in
+            01|1) add_trojan_user ;;
+            02|2) create_trial_account "trojan" ;;
+            03|3) renew_trojan_user ;;
+            04|4) delete_trojan_user ;;
+            05|5) check_login_users ;;
+            06|6) list_protocol_active "trojan" ;;
+            07|7) renew_ssl ;;
+            08|8) source "${SCRIPT_BASE}/user/usage_tracker.sh"; show_usage ;;
+            00|0) return ;;
+            *) msg_warn "Invalid option" ;;
+        esac
+        echo ""
+        read -rp " Press Enter to continue..."
+    done
+}
+
+# =============================================
+#  WARP MENU
+# =============================================
+
+menu_warp() {
+    while true; do
+        clear
+        local warp_st
+        if [[ -f "${CONFIG_DIR}/modules/warp_installed" ]]; then
+            warp_st="${GREEN}ON${NC}"
+        else
+            warp_st="${RED}OFF${NC}"
+        fi
+
+        echo -e "$L"
+        echo -e "           ${BOLD}${YELLOW}↙ SOCKS WARP MENU ↘${NC}"
+        echo -e "$L"
+        echo -e " WARP SOCKS STATUS : ${warp_st}"
+        echo -e "$L"
+        echo -e " ${GREEN}[ 01 ]${NC} INSTALL SOCKS WARP"
+        echo -e " ${GREEN}[ 02 ]${NC} LIST DOMAIN"
+        echo -e " ${GREEN}[ 03 ]${NC} ADD DOMAIN"
+        echo -e " ${GREEN}[ 04 ]${NC} DELETE DOMAIN"
+        echo -e " ${GREEN}[ 05 ]${NC} UNINSTALL SOCKS WARP"
+        echo -e "$L"
+        echo -e " ${RED}[  0 ]${NC} EXIT TO MENU"
+        echo -e "$L"
+        echo ""
+        read -rp "    Please select an option : " opt
+
+        source "${SCRIPT_BASE}/warp/install_warp.sh"
+        case "${opt}" in
+            01|1) install_warp ;;
+            02|2) list_warp_routes ;;
+            03|3) add_warp_route ;;
+            04|4) delete_warp_route ;;
+            05|5) uninstall_warp ;;
+            00|0) return ;;
+            *) msg_warn "Invalid option" ;;
+        esac
+        echo ""
+        read -rp " Press Enter to continue..."
+    done
+}
+
+# =============================================
+#  ADS BLOCKER MENU
+# =============================================
+
+menu_ads() {
+    if [[ -f "${CONFIG_DIR}/modules/ads_blocker_installed" ]]; then
+        echo -e "  Ads Blocker is ${GREEN}active${NC}"
+        echo -e "  ${GREEN}1${NC}. Update blocklist"
+        echo -e "  ${GREEN}2${NC}. Uninstall"
+        echo -e "  ${GREEN}0${NC}. Back"
+        echo ""
+        read -rp " Choose: " choice
+        case "${choice}" in
+            1) source "${SCRIPT_BASE}/tools/ads_blocker.sh"; update_ads_blocker ;;
+            2) source "${SCRIPT_BASE}/tools/ads_blocker.sh"; uninstall_ads_blocker ;;
+            0) return ;;
+        esac
+    else
+        echo -e "  Ads Blocker is ${RED}not installed${NC}"
+        if confirm "Install Ads Blocker?"; then
+            source "${SCRIPT_BASE}/tools/ads_blocker.sh"
+            install_ads_blocker
+        fi
+    fi
+}
+
+# =============================================
+#  SYSTEM HELPERS
+# =============================================
+
+ssh_add_user() {
+    echo -e "$L"
+    echo -e " ${BOLD}CREATE SSH USER${NC}"
+    echo -e "$L"
+    read -rp " Username: " username
+    [[ -z "${username}" ]] && { msg_fail "Empty username"; return; }
+    read -rp " Password: " password
+    [[ -z "${password}" ]] && { msg_fail "Empty password"; return; }
+    read -rp " Validity in days (default: 30): " days
+    days="${days:-30}"
+    local expiry
+    expiry=$(get_expiry_date "${days}")
+
+    useradd -M -s /bin/false -e "${expiry}" "${username}" 2>/dev/null
+    echo "${username}:${password}" | chpasswd
+
+    cat > "${USER_DB}/ssh/active/${username}" <<EOF
+USERNAME=${username}
+CREATED=$(date +"%Y-%m-%d")
+EXPIRY=${expiry}
+STATUS=active
+EOF
+
+    msg_ok "SSH user '${username}' created (expires: ${expiry})"
+}
+
+ssh_trial_user() {
+    echo -e "$L"
+    echo -e " ${BOLD}CREATE TRIAL SSH USER${NC}"
+    echo -e "$L"
+    local username="trial-$(date +%s | tail -c 5)"
+    local password="trial$(shuf -i 1000-9999 -n1)"
+    local expiry
+    expiry=$(get_expiry_date "1")
+    useradd -M -s /bin/false -e "${expiry}" "${username}" 2>/dev/null
+    echo "${username}:${password}" | chpasswd
+    cat > "${USER_DB}/ssh/active/${username}" <<EOF
+USERNAME=${username}
+CREATED=$(date +"%Y-%m-%d")
+EXPIRY=${expiry}
+STATUS=active
+EOF
+    msg_ok "Trial SSH user created"
+    echo -e " Username : ${GREEN}${username}${NC}"
+    echo -e " Password : ${GREEN}${password}${NC}"
+    echo -e " Expires  : ${YELLOW}${expiry}${NC}"
+}
+
+ssh_delete_user() {
+    echo -e "$L"
+    echo -e " ${BOLD}DELETE SSH USER${NC}"
+    echo -e "$L"
+    read -rp " Username: " username
+    [[ -z "${username}" ]] && { msg_fail "Empty username"; return; }
+    userdel -f "${username}" 2>/dev/null
+    rm -f "${USER_DB}/ssh/active/${username}" "${USER_DB}/ssh/expired/${username}"
+    msg_ok "SSH user '${username}' deleted"
+}
+
+ssh_list_users() {
+    echo -e "$L"
+    echo -e " ${BOLD}SSH USER LIST${NC}"
+    echo -e "$L"
+    local count=0
+    for f in "${USER_DB}/ssh/active/"*; do
+        [[ -f "${f}" ]] || continue
+        count=$((count + 1))
+        local uname expiry
+        uname=$(grep "^USERNAME=" "${f}" | cut -d= -f2)
+        expiry=$(grep "^EXPIRY=" "${f}" | cut -d= -f2)
+        echo -e " ${GREEN}${count}${NC}. ${uname} — expires: ${expiry}"
+    done
+    [[ "${count}" -eq 0 ]] && echo -e " ${YELLOW}No SSH users${NC}"
+}
+
+ssh_renew_user() {
+    echo -e "$L"
+    echo -e " ${BOLD}EXTEND SSH ACCOUNT${NC}"
+    echo -e "$L"
+    read -rp " Username: " username
+    [[ -z "${username}" ]] && { msg_fail "Empty username"; return; }
+    read -rp " Extend by days (default: 30): " days
+    days="${days:-30}"
+    local expiry
+    expiry=$(get_expiry_date "${days}")
+    usermod -e "${expiry}" "${username}" 2>/dev/null
+    [[ -f "${USER_DB}/ssh/active/${username}" ]] && sed -i "s/^EXPIRY=.*/EXPIRY=${expiry}/" "${USER_DB}/ssh/active/${username}"
+    msg_ok "SSH user '${username}' extended to ${expiry}"
+}
+
+ssh_check_login() {
+    echo -e "$L"
+    echo -e " ${BOLD}SSH LOGGED IN USERS${NC}"
+    echo -e "$L"
+    who 2>/dev/null || echo -e " ${YELLOW}No users logged in${NC}"
+}
+
+ssh_auto_kill() {
+    echo -e "$L"
+    echo -e " ${BOLD}AUTO KILL MULTI-LOGIN${NC}"
+    echo -e "$L"
+    echo -e " ${GREEN}1${NC}. Enable (max 2 sessions per user)"
+    echo -e " ${GREEN}2${NC}. Disable"
     echo ""
-    read -rp " Choose: " choice
-    case "${choice}" in
-        1) source "${SCRIPT_BASE}/user/usage_tracker.sh"; show_usage ;;
-        2)
-            read -rp " Username: " uname
-            source "${SCRIPT_BASE}/user/usage_tracker.sh"; show_user_usage "${uname}"
-            ;;
-        3) return ;;
+    read -rp " Choose: " c
+    case "${c}" in
+        1) msg_ok "Auto-kill enabled (feature placeholder)" ;;
+        2) msg_ok "Auto-kill disabled" ;;
     esac
 }
 
-ssh_ws_menu() {
+ssh_multilogin() {
+    echo -e "$L"
+    echo -e " ${BOLD}MULTI-LOGIN CHECK${NC}"
+    echo -e "$L"
+    who | awk '{print $1}' | sort | uniq -c | sort -rn | head -20
+}
+
+ssh_ws_toggle() {
     if [[ -f "${CONFIG_DIR}/modules/ssh_ws_installed" ]]; then
         echo -e "  SSH WebSocket is ${GREEN}installed${NC}"
         if confirm "Uninstall SSH WebSocket?"; then
@@ -183,132 +505,52 @@ ssh_ws_menu() {
     fi
 }
 
-warp_menu() {
-    if [[ -f "${CONFIG_DIR}/modules/warp_installed" ]]; then
-        echo -e "  WARP is ${GREEN}installed${NC}"
-        echo -e "  ${GREEN}1${NC}. View WARP routed domains"
-        echo -e "  ${GREEN}2${NC}. Add domains to WARP"
-        echo -e "  ${GREEN}3${NC}. Uninstall WARP"
-        echo -e "  ${GREEN}4${NC}. Back"
-        echo ""
-        read -rp " Choose: " choice
-        case "${choice}" in
-            1) source "${SCRIPT_BASE}/warp/install_warp.sh"; list_warp_routes ;;
-            2) source "${SCRIPT_BASE}/warp/install_warp.sh"; add_warp_route ;;
-            3) source "${SCRIPT_BASE}/warp/install_warp.sh"; uninstall_warp ;;
-            4) return ;;
-        esac
-    else
-        echo -e "  WARP is ${RED}not installed${NC}"
-        if confirm "Install WARP?"; then
-            source "${SCRIPT_BASE}/warp/install_warp.sh"
-            install_warp
-        fi
-    fi
-}
-
-ssh_add_user() {
-    print_section "Add SSH User"
-    read -rp " Username: " username
-    [[ -z "${username}" ]] && { msg_fail "Empty username"; return; }
-    read -rp " Password: " password
-    [[ -z "${password}" ]] && { msg_fail "Empty password"; return; }
-    read -rp " Validity in days (default: 30): " days
-    days="${days:-30}"
-    local expiry
-    expiry=$(get_expiry_date "${days}")
-
-    useradd -M -s /bin/false -e "${expiry}" "${username}" 2>/dev/null
-    echo "${username}:${password}" | chpasswd
-
-    # Save SSH user data
-    cat > "${USER_DB}/ssh/active/${username}" <<EOF
-USERNAME=${username}
-CREATED=$(date +"%Y-%m-%d")
-EXPIRY=${expiry}
-STATUS=active
-EOF
-
-    msg_ok "SSH user '${username}' created (expires: ${expiry})"
-}
-
-ssh_delete_user() {
-    print_section "Delete SSH User"
-    read -rp " Username: " username
-    [[ -z "${username}" ]] && { msg_fail "Empty username"; return; }
-    userdel -f "${username}" 2>/dev/null
-    rm -f "${USER_DB}/ssh/active/${username}" "${USER_DB}/ssh/expired/${username}"
-    msg_ok "SSH user '${username}' deleted"
-}
-
-ssh_list_users() {
-    print_section "SSH Users"
-    local count=0
-    echo -e " ${BOLD}No  Username         Expiry${NC}"
-    print_line
-    for f in "${USER_DB}/ssh/active/"*; do
-        [[ -f "${f}" ]] || continue
-        count=$((count + 1))
-        local uname expiry
-        uname=$(grep "^USERNAME=" "${f}" | cut -d= -f2)
-        expiry=$(grep "^EXPIRY=" "${f}" | cut -d= -f2)
-        printf " %-3s %-16s %s\n" "${count}" "${uname}" "${expiry}"
-    done
-    [[ "${count}" -eq 0 ]] && echo -e " ${YELLOW}No SSH users${NC}"
-    echo ""
-    echo -e " Total: ${count}"
+change_xray_port() {
+    echo -e "$L"
+    echo -e " ${BOLD}CHANGE XRAY PORT${NC}"
+    echo -e "$L"
+    echo -e " Current ports:"
+    echo -e "  443   : VLESS XTLS Reality"
+    echo -e "  80    : Non-TLS"
+    echo -e "  8443  : TLS"
+    msg_info "Port changes require manual config edit for now"
 }
 
 restart_all_services() {
-    print_section "Restarting All Services"
+    echo -e "$L"
+    echo -e " ${BOLD}RESTARTING ALL SERVICES${NC}"
+    echo -e "$L"
     restart_service xray
     restart_service nginx
     [[ -f "${CONFIG_DIR}/modules/ssh_ws_installed" ]] && restart_service ssh-ws
     msg_ok "All services restarted"
 }
 
-check_xray_config() {
-    print_section "Xray Configuration Check"
-    if xray run -test -config "${XRAY_CONFIG}" 2>&1; then
-        msg_ok "Xray configuration is valid"
-    else
-        msg_fail "Xray configuration has errors"
-    fi
-}
-
-view_xray_logs() {
-    print_section "Xray Logs (last 50 lines)"
-    tail -50 /var/log/xray/access.log 2>/dev/null || msg_warn "No logs found"
-}
-
 run_speedtest() {
-    print_section "Server Speedtest"
+    echo -e "$L"
+    echo -e " ${BOLD}SPEEDTEST VPS${NC}"
+    echo -e "$L"
     if command -v speedtest &>/dev/null; then
         speedtest --accept-license
+    elif command -v speedtest-cli &>/dev/null; then
+        speedtest-cli
     else
-        msg_fail "Speedtest not installed"
-    fi
-}
-
-show_bandwidth() {
-    print_section "Server Bandwidth"
-    if command -v vnstat &>/dev/null; then
-        vnstat
-    else
-        msg_fail "vnstat not installed"
+        msg_info "Installing speedtest..."
+        apt-get install -y speedtest-cli > /dev/null 2>&1
+        speedtest-cli 2>/dev/null || msg_fail "Speedtest not available"
     fi
 }
 
 change_domain() {
-    print_section "Change Domain"
+    echo -e "$L"
+    echo -e " ${BOLD}ADD/CHANGE DOMAIN VPS${NC}"
+    echo -e "$L"
     local old_domain
     old_domain=$(get_domain)
     msg_info "Current domain: ${old_domain:-Not set}"
     read -rp " New domain: " new_domain
     [[ -z "${new_domain}" ]] && { msg_fail "Empty domain"; return; }
     echo "${new_domain}" > "${CONFIG_DIR}/domain"
-
-    # Re-setup SSL
     source "${SCRIPT_BASE}/nginx/install_nginx.sh"
     setup_ssl_certificate
     generate_nginx_config
@@ -317,7 +559,9 @@ change_domain() {
 }
 
 renew_ssl() {
-    print_section "Renew SSL Certificate"
+    echo -e "$L"
+    echo -e " ${BOLD}RENEW XRAY CERTIFICATION${NC}"
+    echo -e "$L"
     local domain
     domain=$(get_domain)
     certbot renew --quiet
@@ -327,65 +571,91 @@ renew_ssl() {
     msg_ok "SSL certificate renewed"
 }
 
-setup_auto_reboot() {
-    print_section "Auto Reboot Settings"
-    echo -e "  ${GREEN}1${NC}. Enable auto reboot (5:00 AM daily)"
-    echo -e "  ${GREEN}2${NC}. Custom time"
-    echo -e "  ${GREEN}3${NC}. Disable auto reboot"
-    echo -e "  ${GREEN}4${NC}. Back"
-    echo ""
-    read -rp " Choose: " choice
-    case "${choice}" in
-        1)
-            sed -i '/\/sbin\/reboot/d' /etc/crontab
-            echo "0 5 * * * root /sbin/reboot" >> /etc/crontab
-            systemctl restart cron
-            msg_ok "Auto reboot set to 5:00 AM daily"
-            ;;
-        2)
-            read -rp " Hour (0-23): " hour
-            read -rp " Minute (0-59): " minute
-            sed -i '/\/sbin\/reboot/d' /etc/crontab
-            echo "${minute} ${hour} * * * root /sbin/reboot" >> /etc/crontab
-            systemctl restart cron
-            msg_ok "Auto reboot set to ${hour}:${minute} daily"
-            ;;
-        3)
-            sed -i '/\/sbin\/reboot/d' /etc/crontab
-            systemctl restart cron
-            msg_ok "Auto reboot disabled"
-            ;;
-        4) return ;;
-    esac
+reboot_vps() {
+    if confirm "Reboot VPS now?"; then
+        msg_ok "Rebooting..."
+        sleep 2
+        reboot
+    fi
 }
 
-system_info() {
-    print_section "System Information"
-    echo -e " ${CYAN}Hostname${NC}  : $(hostname)"
-    echo -e " ${CYAN}OS${NC}        : $(detect_os; echo "${OS_PRETTY}")"
-    echo -e " ${CYAN}Kernel${NC}    : $(uname -r)"
-    echo -e " ${CYAN}Arch${NC}      : $(uname -m)"
-    echo -e " ${CYAN}CPU${NC}       : $(nproc) core(s)"
-    echo -e " ${CYAN}RAM${NC}       : $(free -h | awk '/^Mem:/{print $2}')"
-    echo -e " ${CYAN}Swap${NC}      : $(free -h | awk '/^Swap:/{print $2}')"
-    echo -e " ${CYAN}Disk${NC}      : $(df -h / | awk 'NR==2{print $2 " (" $5 " used)"}')"
-    echo -e " ${CYAN}IP${NC}        : $(get_server_ip)"
-    echo -e " ${CYAN}Uptime${NC}    : $(uptime -p 2>/dev/null || uptime)"
+service_status() {
+    clear
+    echo -e "$L"
+    echo -e "           ${BOLD}${YELLOW}↙ SERVICE STATUS ↘${NC}"
+    echo -e "$L"
+    local services=("xray" "nginx" "sshd" "ssh-ws" "cron")
+    for svc in "${services[@]}"; do
+        if systemctl is-active --quiet "${svc}" 2>/dev/null; then
+            echo -e "   ${GREEN}●${NC} ${svc} — ${GREEN}running${NC}"
+        elif systemctl list-unit-files 2>/dev/null | grep -q "^${svc}"; then
+            echo -e "   ${RED}●${NC} ${svc} — ${RED}stopped${NC}"
+        else
+            echo -e "   ${YELLOW}○${NC} ${svc} — not installed"
+        fi
+    done
+    if [[ -f "${CONFIG_DIR}/modules/warp_installed" ]]; then
+        echo -e "   ${GREEN}●${NC} warp — installed"
+    fi
+    if [[ -f "${CONFIG_DIR}/modules/ads_blocker_installed" ]]; then
+        echo -e "   ${GREEN}●${NC} ads-blocker — active"
+    fi
+    echo -e "$L"
+}
+
+service_port_info() {
+    clear
+    echo -e "$L"
+    echo -e "         ${BOLD}${YELLOW}↙ SERVICE/PORT INFORMATION ↘${NC}"
+    echo -e "$L"
+    echo -e " ${BOLD}Port    Protocol       Transport${NC}"
+    echo -e "$L"
+    echo -e " 443     VLESS Reality   TCP XTLS (direct)"
+    echo -e " 80      All protocols   Non-TLS (Nginx)"
+    echo -e " 8080    All protocols   Non-TLS (Nginx)"
+    echo -e " 8880    All protocols   Non-TLS (Nginx)"
+    echo -e " 2086    All protocols   Non-TLS (Nginx)"
+    echo -e " 8443    All protocols   TLS (Nginx)"
+    echo -e " 2083    All protocols   TLS (Nginx)"
+    echo -e " 2087    All protocols   TLS (Nginx)"
+    echo -e "$L"
+    echo -e " ${BOLD}Internal Ports (Xray)${NC}"
+    echo -e "$L"
+    echo -e " 10001   VLESS WebSocket"
+    echo -e " 10002   VLESS HttpUpgrade"
+    echo -e " 10003   VLESS XHTTP"
+    echo -e " 10004   VLESS gRPC"
+    echo -e " 10005   VMESS WebSocket"
+    echo -e " 10006   VMESS gRPC"
+    echo -e " 10007   Trojan WebSocket"
+    echo -e " 10008   Trojan gRPC"
+    echo -e " 10010   Trojan TCP"
+    echo -e " 10085   Stats API"
+    echo -e "$L"
 }
 
 backup_restore_menu() {
-    print_section "Backup & Restore"
-    echo -e "  ${GREEN}1${NC}. Backup user data"
-    echo -e "  ${GREEN}2${NC}. Restore user data"
-    echo -e "  ${GREEN}3${NC}. Back"
+    echo -e "$L"
+    echo -e " ${BOLD}BACKUP & RESTORE${NC}"
+    echo -e "$L"
+    echo -e " ${GREEN}1${NC}. Backup user data"
+    echo -e " ${GREEN}2${NC}. Restore user data"
+    echo -e " ${GREEN}0${NC}. Back"
     echo ""
     read -rp " Choose: " choice
     case "${choice}" in
         1)
             local backup_file="${DATA_DIR}/backup/freeflow_backup_$(date +%Y%m%d_%H%M%S).tar.gz"
             mkdir -p "${DATA_DIR}/backup"
-            tar czf "${backup_file}" -C "${DATA_DIR}" users/ usage/ 2>/dev/null
-            tar rzf "${backup_file}" -C "${CONFIG_DIR}" domain paths.conf default_uuid 2>/dev/null
+            local tmp_dir
+            tmp_dir=$(mktemp -d)
+            cp -a "${DATA_DIR}/users" "${tmp_dir}/" 2>/dev/null
+            cp -a "${DATA_DIR}/usage" "${tmp_dir}/" 2>/dev/null
+            mkdir -p "${tmp_dir}/config"
+            cp -f "${CONFIG_DIR}/domain" "${CONFIG_DIR}/paths.conf" "${CONFIG_DIR}/default_uuid" "${tmp_dir}/config/" 2>/dev/null
+            [[ -f "${CONFIG_DIR}/cf_mode" ]] && cp -f "${CONFIG_DIR}/cf_mode" "${tmp_dir}/config/"
+            tar czf "${backup_file}" -C "${tmp_dir}" . 2>/dev/null
+            rm -rf "${tmp_dir}"
             msg_ok "Backup saved: ${backup_file}"
             ;;
         2)
@@ -393,12 +663,12 @@ backup_restore_menu() {
             if [[ -f "${backup_file}" ]]; then
                 tar xzf "${backup_file}" -C "${DATA_DIR}" 2>/dev/null
                 msg_ok "Data restored from ${backup_file}"
-                msg_info "Restart services to apply changes"
+                msg_info "Restart services to apply"
             else
                 msg_fail "File not found: ${backup_file}"
             fi
             ;;
-        3) return ;;
+        0) return ;;
     esac
 }
 
