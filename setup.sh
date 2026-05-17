@@ -191,7 +191,9 @@ msg_info "Configuring firewall..."
 for port in 80 443 8080 8443 8880 2083 2086 2087 700; do
     iptables -I INPUT -p tcp --dport "${port}" -j ACCEPT 2>/dev/null
 done
-apt-get install -y iptables-persistent > /dev/null 2>&1 || true
+echo iptables-persistent iptables-persistent/autosave_v4 boolean true | debconf-set-selections 2>/dev/null
+echo iptables-persistent iptables-persistent/autosave_v6 boolean true | debconf-set-selections 2>/dev/null
+DEBIAN_FRONTEND=noninteractive apt-get install -y iptables-persistent > /dev/null 2>&1 || true
 netfilter-persistent save 2>/dev/null || true
 msg_ok "Firewall ports opened"
 
