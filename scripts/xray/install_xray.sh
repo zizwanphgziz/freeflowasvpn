@@ -157,7 +157,7 @@ EOF
       },
       "streamSettings": {
         "network": "ws",
-        "wsSettings": { "path": "${vless_ws_path}" }
+        "wsSettings": { "path": "/" }
       },
       "tag": "vless-ws",
       "sniffing": { "enabled": true, "destOverride": ["http", "tls"] }
