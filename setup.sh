@@ -11,7 +11,7 @@
 REPO_OWNER="zizwanphgziz"
 REPO_NAME="freeflowasvpn"
 REPO_URL="https://github.com/${REPO_OWNER}/${REPO_NAME}"
-REPO_BRANCH="init-branch"
+REPO_BRANCH="devin/1778915322-v2.3-moclaw-fixes"
 INSTALL_DIR="/usr/local/lib/freeflow"
 VERSION="2.3.0"
 
