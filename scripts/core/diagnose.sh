@@ -56,7 +56,18 @@ else
 fi
 
 if [[ -n "${domain}" ]]; then
-    dns_ip=$(dig +short "${domain}" A 2>/dev/null | head -1)
+    # Try dig first, then host, then getent as fallbacks
+    dns_ip=""
+    if command -v dig &>/dev/null; then
+        dns_ip=$(dig +short "${domain}" A 2>/dev/null | head -1)
+    elif command -v host &>/dev/null; then
+        dns_ip=$(host -t A "${domain}" 2>/dev/null | grep "has address" | head -1 | awk '{print $NF}')
+    elif command -v nslookup &>/dev/null; then
+        dns_ip=$(nslookup "${domain}" 2>/dev/null | awk '/^Address: / {print $2}' | head -1)
+    else
+        dns_ip=$(getent ahosts "${domain}" 2>/dev/null | awk '{print $1}' | head -1)
+    fi
+
     if [[ -n "${dns_ip}" ]]; then
         info "DNS resolves to: ${dns_ip}"
         if [[ "${dns_ip}" == "${server_ip}" ]]; then
@@ -67,6 +78,7 @@ if [[ -n "${domain}" ]]; then
         fi
     else
         fail "DNS resolution failed for ${domain}"
+        info "Install dnsutils: apt-get install -y dnsutils"
     fi
 fi
 
@@ -325,8 +337,52 @@ if [[ -f /var/log/xray/error.log ]]; then
 fi
 echo ""
 
-# ── 12. Sample Share Link ──
-echo -e "${BOLD}[12] Sample Share Link (for testing)${NC}"
+# ── 12. WARP Status ──
+echo -e "${BOLD}[12] WARP Status${NC}"
+if [[ -f "${CONFIG_DIR}/modules/warp_installed" ]]; then
+    warp_method=$(cat "${CONFIG_DIR}/warp/method" 2>/dev/null || echo "unknown")
+    info "WARP method: ${warp_method}"
+    if [[ "${warp_method}" == "warp-cli" ]]; then
+        warp_status=$(warp-cli status 2>/dev/null || echo "warp-cli not available")
+        if echo "${warp_status}" | grep -qi "connected"; then
+            ok "WARP: connected (warp-cli)"
+        else
+            warn "WARP: not connected — ${warp_status}"
+            info "Try: warp-cli connect"
+        fi
+        if ss -tlnp 2>/dev/null | grep -q ":40000 "; then
+            ok "WARP SOCKS5 proxy: listening on port 40000"
+        else
+            warn "WARP SOCKS5 proxy: NOT listening on port 40000"
+        fi
+    elif [[ "${warp_method}" == "wireguard" ]]; then
+        if ip link show warp &>/dev/null; then
+            ok "WARP WireGuard interface: UP"
+        else
+            warn "WARP WireGuard interface: DOWN"
+            info "Try: wg-quick up warp"
+        fi
+    fi
+    # Check Xray WARP outbound
+    if [[ -f "${XRAY_CONFIG}" ]] && jq -e '.outbounds[] | select(.tag=="warp")' "${XRAY_CONFIG}" &>/dev/null; then
+        ok "Xray WARP outbound: configured"
+    else
+        warn "Xray WARP outbound: NOT configured"
+    fi
+    # Check WARP routed domains
+    if [[ -f "${CONFIG_DIR}/warp/domains" && -s "${CONFIG_DIR}/warp/domains" ]]; then
+        warp_domains=$(wc -l < "${CONFIG_DIR}/warp/domains")
+        info "WARP routed domains: ${warp_domains}"
+    else
+        info "WARP routed domains: none"
+    fi
+else
+    info "WARP: not installed"
+fi
+echo ""
+
+# ── 13. Sample Share Link ──
+echo -e "${BOLD}[13] Sample Share Link (for testing)${NC}"
 if [[ -f "${XRAY_CONFIG}" ]] && jq empty "${XRAY_CONFIG}" 2>/dev/null; then
     uuid=$(jq -r '.inbounds[] | select(.tag=="vless-ws") | .settings.clients[0].id' "${XRAY_CONFIG}" 2>/dev/null)
     if [[ -n "${uuid}" && "${uuid}" != "null" && -n "${domain}" ]]; then

@@ -307,7 +307,24 @@ menu_warp() {
         clear
         local warp_st
         if [[ -f "${CONFIG_DIR}/modules/warp_installed" ]]; then
-            warp_st="${GREEN}ON${NC}"
+            # Check if WARP is actually running
+            local warp_method
+            warp_method=$(cat "${CONFIG_DIR}/warp/method" 2>/dev/null)
+            if [[ "${warp_method}" == "warp-cli" ]]; then
+                if warp-cli status 2>/dev/null | grep -qi "connected"; then
+                    warp_st="${GREEN}ON${NC}"
+                else
+                    warp_st="${YELLOW}INSTALLED${NC}"
+                fi
+            elif [[ "${warp_method}" == "wireguard" ]]; then
+                if ip link show warp &>/dev/null; then
+                    warp_st="${GREEN}ON${NC}"
+                else
+                    warp_st="${YELLOW}INSTALLED${NC}"
+                fi
+            else
+                warp_st="${GREEN}ON${NC}"
+            fi
         else
             warp_st="${RED}OFF${NC}"
         fi

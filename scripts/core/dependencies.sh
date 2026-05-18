@@ -13,7 +13,7 @@ install_base_packages() {
     apt-get install -y \
         wget curl openssl sudo coreutils gnupg bc \
         lsof socat unzip zip jq htop net-tools \
-        cron vnstat python3 \
+        cron vnstat python3 dnsutils \
         binutils screen
 
     if command -v apt-get &>/dev/null; then

@@ -189,14 +189,26 @@
 
 ### PR #8 (replaced #7): https://github.com/zizwanphgziz/freeflowasvpn/pull/8 — MERGED
 
-## Phase 14: v2.3.2 — Install Fix: Services Not Starting — IN PROGRESS
+## Phase 14: v2.3.2 — Install Fix: Services Not Starting — DONE
 - [x] **Root cause identified**: Nginx NOT running after fresh install (5 bugs in install flow)
 - [x] **Fix 1**: install_ssh_ws skips nginx config regen when nginx not installed
 - [x] **Fix 2**: Stale freeflow.conf removed before nginx package install
 - [x] **Fix 3**: Explicit `systemctl enable` for xray and nginx
 - [x] **Fix 4**: Final service ensure block in setup.sh with retry logic
 - [x] **Fix 5**: `mkdir -p /etc/nginx/conf.d` in generate_nginx_config
-- [ ] **Testing**: Awaiting Ahmad's fresh VPS test
+- [x] **Testing**: Ahmad confirmed — VLESS WS connects immediately after fresh install (48ms handshake)
+- [x] PR #9 merged into init-branch
+
+### PR #9: https://github.com/zizwanphgziz/freeflowasvpn/pull/9 — MERGED
+
+## Phase 15: v2.3.3 — DNS Diagnostic & WARP Fix — IN PROGRESS
+- [x] **Bug 1**: DNS diagnostic false alarm — `dig` not installed, added `dnsutils` + fallback commands
+- [x] **Bug 2**: WARP WireGuard fallback missing marker file + Xray outbound config
+- [x] **Bug 3**: warp-svc daemon not started before warp-cli commands
+- [x] **Bug 4**: Menu WARP status only checks file marker, not actual connection
+- [x] Added `configure_xray_warp_wireguard()` — freedom outbound with sendThrough for WireGuard
+- [x] Added WARP status section to diagnostic tool (section 12)
+- [ ] **Testing**: Awaiting Ahmad's test
 
 ## Changelog
 | Date | Change |
@@ -225,3 +237,9 @@
 | 2026-05-18 | v2.3.1: VLESS WS confirmed working on V2rayNG via CF CDN (36ms handshake) |
 | 2026-05-18 | v2.3.1: Merged to init-branch (PR #8) |
 | 2026-05-18 | v2.3.2: Fixed 5 install-flow bugs causing Nginx/Xray not starting after fresh install |
+| 2026-05-18 | v2.3.2: Ahmad confirmed — VLESS WS connects immediately after fresh install (48ms) |
+| 2026-05-18 | v2.3.2: Merged to init-branch (PR #9) |
+| 2026-05-18 | v2.3.3: Fixed DNS diagnostic false alarm (dnsutils not installed, added fallback) |
+| 2026-05-18 | v2.3.3: Fixed WARP not working (WireGuard fallback missing marker+Xray config) |
+| 2026-05-18 | v2.3.3: Fixed warp-svc not started, added connect verification |
+| 2026-05-18 | v2.3.3: WARP menu shows actual connection status |

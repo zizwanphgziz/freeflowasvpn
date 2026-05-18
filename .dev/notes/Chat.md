@@ -463,3 +463,51 @@ Diagnostic output showed:
 - `scripts/nginx/install_nginx.sh` — stale config cleanup, enable nginx, mkdir, retry logic
 - `scripts/xray/install_xray.sh` — enable xray service after daemon-reload
 - `scripts/ssh/install_ssh_ws.sh` — skip nginx config regen if nginx not installed
+
+### Testing Result
+- Ahmad tested v2.3.2 on fresh VPS: **VLESS WS connects immediately after install** (48ms handshake)
+- No manual fix needed — config works right away after install
+- PR #9 merged into init-branch
+
+## Session 10 — v2.3.3 DNS Diagnostic & WARP Fix (2026-05-18)
+
+### Ahmad's Report
+After v2.3.2 install fix confirmed working (VPN connects right away), two remaining issues:
+1. Diagnostic tool shows DNS error (false alarm — `dig` command not installed)
+2. After WARP installation from menu, WARP still shows OFF
+3. Domain bypass via WARP doesn't work
+
+### Root Cause Analysis
+
+**Bug 1: DNS diagnostic false alarm**
+- `diagnose.sh` uses `dig +short` (line 59) to resolve domain
+- `dnsutils` package (provides `dig`) is NOT in `dependencies.sh` base packages
+- On fresh install without `dnsutils`, diagnostic reports `[FAIL] DNS resolution failed` even though DNS actually works
+- Fix: Added `dnsutils` to base packages in `dependencies.sh` + added fallback resolution using `host`, `nslookup`, `getent ahosts` in `diagnose.sh`
+
+**Bug 2: WARP WireGuard fallback missing post-install steps**
+- On Debian 13 (trixie), `cloudflare-warp` package may not install (mapped to bookworm repo)
+- Code falls back to WireGuard-based WARP (`install_warp_wireguard`)
+- But WireGuard fallback path exits with `return $?` BEFORE creating:
+  - `${CONFIG_DIR}/modules/warp_installed` marker file → menu shows OFF
+  - Xray WARP outbound → domain routing doesn't work
+  - Routing rules for WireGuard interface
+- Fix: Added marker file creation + Xray outbound config for WireGuard method
+- Added `configure_xray_warp_wireguard()` using Xray `freedom` outbound with `sendThrough` to route through WireGuard interface
+- Added ip routing rules (table 51840) so OS routes WARP traffic through WireGuard interface
+
+**Bug 3: warp-cli daemon not started**
+- `warp-cli` path doesn't ensure `warp-svc` daemon is running before issuing commands
+- If daemon isn't started, all `warp-cli` commands fail silently (suppressed with `2>/dev/null`)
+- Fix: Added `systemctl enable/start warp-svc` before registration + connection status verification after `warp-cli connect`
+
+**Bug 4: Menu WARP status only checks marker file**
+- Menu shows ON/OFF based solely on `warp_installed` marker file
+- Doesn't reflect actual WARP connection status
+- Fix: Menu now checks actual warp-cli connection status or WireGuard interface status
+
+### Files Modified
+- `scripts/core/dependencies.sh` — added `dnsutils` to base packages
+- `scripts/core/diagnose.sh` — DNS fallback (host/nslookup/getent), WARP status section added
+- `scripts/warp/install_warp.sh` — WireGuard marker+Xray config, warp-svc startup, connect verification, new `configure_xray_warp_wireguard()` function
+- `scripts/menu/menu.sh` — WARP status shows actual connection state
