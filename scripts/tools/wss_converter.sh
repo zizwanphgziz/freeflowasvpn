@@ -95,7 +95,7 @@ convert_user_configs() {
     domain=$(get_domain)
 
     # Load paths
-    local vless_ws_path="/" vless_hu_path="/vless-hu" vless_xhttp_path="/vless-xhttp"
+    local vless_ws_path="/vless-ws" vless_hu_path="/vless-hup" vless_xhttp_path="/vless-xhttp"
     local vless_grpc_sn="vless-grpc" vmess_ws_path="/vmess-ws" vmess_grpc_sn="vmess-grpc"
     local trojan_ws_path="/trojan-ws" trojan_grpc_sn="trojan-grpc"
     if [[ -f "${CONFIG_DIR}/paths.conf" ]]; then
@@ -127,27 +127,27 @@ convert_user_configs() {
         case "${proto}" in
             vless)
                 echo -e " ${CYAN}WS TLS:${NC}"
-                echo "  $(generate_vless_link "${uuid}" "${domain}" 443 "${vless_ws_path}" true ws)"
+                echo "  $(generate_vless_link "${uuid}" "${domain}" 8443 "${vless_ws_path}" true ws)"
                 echo -e " ${CYAN}WS nonTLS:${NC}"
                 echo "  $(generate_vless_link "${uuid}" "${domain}" 80 "${vless_ws_path}" false ws)"
                 echo -e " ${CYAN}gRPC TLS:${NC}"
-                echo "  $(generate_vless_link "${uuid}" "${domain}" 443 "" true grpc "${vless_grpc_sn}")"
+                echo "  $(generate_vless_link "${uuid}" "${domain}" 2083 "" true grpc "${vless_grpc_sn}")"
                 ;;
             vmess)
                 echo -e " ${CYAN}WS TLS:${NC}"
-                echo "  $(generate_vmess_link "${uuid}" "${domain}" 443 "${vmess_ws_path}" true ws)"
+                echo "  $(generate_vmess_link "${uuid}" "${domain}" 8443 "${vmess_ws_path}" true ws)"
                 echo -e " ${CYAN}WS nonTLS:${NC}"
                 echo "  $(generate_vmess_link "${uuid}" "${domain}" 80 "${vmess_ws_path}" false ws)"
                 echo -e " ${CYAN}gRPC TLS:${NC}"
-                echo "  $(generate_vmess_link "${uuid}" "${domain}" 443 "" true grpc "${vmess_grpc_sn}")"
+                echo "  $(generate_vmess_link "${uuid}" "${domain}" 2083 "" true grpc "${vmess_grpc_sn}")"
                 ;;
             trojan)
                 echo -e " ${CYAN}WS TLS:${NC}"
-                echo "  $(generate_trojan_link "${uuid}" "${domain}" 443 "${trojan_ws_path}" true ws)"
+                echo "  $(generate_trojan_link "${uuid}" "${domain}" 8443 "${trojan_ws_path}" true ws)"
                 echo -e " ${CYAN}WS nonTLS:${NC}"
                 echo "  $(generate_trojan_link "${uuid}" "${domain}" 80 "${trojan_ws_path}" false ws)"
                 echo -e " ${CYAN}gRPC TLS:${NC}"
-                echo "  $(generate_trojan_link "${uuid}" "${domain}" 443 "" true grpc "${trojan_grpc_sn}")"
+                echo "  $(generate_trojan_link "${uuid}" "${domain}" 2083 "" true grpc "${trojan_grpc_sn}")"
                 ;;
         esac
     done
