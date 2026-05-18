@@ -276,13 +276,13 @@ add_warp_route() {
     tmp_config=$(mktemp)
 
     jq --argjson domains "${domain_list}" '
-        .routing.rules = [
-            .routing.rules[] | select(.outboundTag != "warp" or .type != "field" or has("domain") | not)
-        ] + [{
+        .routing.rules = [{
             "type": "field",
             "domain": $domains,
             "outboundTag": "warp"
-        }]
+        }] + [
+            .routing.rules[] | select((.outboundTag == "warp" and .type == "field" and has("domain")) | not)
+        ]
     ' "${XRAY_CONFIG}" > "${tmp_config}"
 
     if [[ -s "${tmp_config}" ]]; then
@@ -330,13 +330,13 @@ delete_warp_route() {
         local tmp_config
         tmp_config=$(mktemp)
         jq --argjson domains "${domain_list}" '
-            .routing.rules = [
-                .routing.rules[] | select(.outboundTag != "warp" or .type != "field" or has("domain") | not)
-            ] + [{
+            .routing.rules = [{
                 "type": "field",
                 "domain": $domains,
                 "outboundTag": "warp"
-            }]
+            }] + [
+                .routing.rules[] | select((.outboundTag == "warp" and .type == "field" and has("domain")) | not)
+            ]
         ' "${XRAY_CONFIG}" > "${tmp_config}"
 
         if [[ -s "${tmp_config}" ]]; then

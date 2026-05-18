@@ -201,13 +201,22 @@
 
 ### PR #9: https://github.com/zizwanphgziz/freeflowasvpn/pull/9 — MERGED
 
-## Phase 15: v2.3.3 — DNS Diagnostic & WARP Fix — IN PROGRESS
+## Phase 15: v2.3.3 — DNS Diagnostic & WARP Fix — DONE
 - [x] **Bug 1**: DNS diagnostic false alarm — `dig` not installed, added `dnsutils` + fallback commands
 - [x] **Bug 2**: WARP WireGuard fallback missing marker file + Xray outbound config
 - [x] **Bug 3**: warp-svc daemon not started before warp-cli commands
 - [x] **Bug 4**: Menu WARP status only checks file marker, not actual connection
 - [x] Added `configure_xray_warp_wireguard()` — freedom outbound with sendThrough for WireGuard
 - [x] Added WARP status section to diagnostic tool (section 12)
+- [x] **Testing**: Ahmad confirmed — diagnostic clean, WARP installs ON, domains added
+- [x] **Issue found**: Domain bypass not working — routing bug (see Phase 16)
+
+### PR #10: https://github.com/zizwanphgziz/freeflowasvpn/pull/10 — MERGED
+
+## Phase 16: v2.3.4 — WARP Domain Routing Fix — IN PROGRESS
+- [x] **Critical Bug**: jq filter in `add_warp_route()` deletes ALL Xray routing rules due to `|` operator precedence
+- [x] **Same bug** in `delete_warp_route()` — fixed
+- [x] **WARP rule order**: Prepended (first) instead of appended so WARP domains match before catch-all
 - [ ] **Testing**: Awaiting Ahmad's test
 
 ## Changelog
@@ -243,3 +252,7 @@
 | 2026-05-18 | v2.3.3: Fixed WARP not working (WireGuard fallback missing marker+Xray config) |
 | 2026-05-18 | v2.3.3: Fixed warp-svc not started, added connect verification |
 | 2026-05-18 | v2.3.3: WARP menu shows actual connection status |
+| 2026-05-18 | v2.3.3: Ahmad tested — diagnostic clean, WARP ON, but domain bypass broken |
+| 2026-05-18 | v2.3.3: Merged to init-branch (PR #10) |
+| 2026-05-18 | v2.3.4: Fixed critical jq filter bug — add_warp_route deleted ALL routing rules |
+| 2026-05-18 | v2.3.4: WARP domain rule now prepended (first) for correct matching order |

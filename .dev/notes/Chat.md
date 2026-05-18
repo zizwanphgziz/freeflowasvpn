@@ -511,3 +511,42 @@ After v2.3.2 install fix confirmed working (VPN connects right away), two remain
 - `scripts/core/diagnose.sh` — DNS fallback (host/nslookup/getent), WARP status section added
 - `scripts/warp/install_warp.sh` — WireGuard marker+Xray config, warp-svc startup, connect verification, new `configure_xray_warp_wireguard()` function
 - `scripts/menu/menu.sh` — WARP status shows actual connection state
+
+### Testing Result
+- Ahmad tested v2.3.3: diagnostic clean (0 errors), WARP installs and shows ON
+- Domain bypass (ecoss-api.kpdn.gov.my, ecoss.kpdn.gov.my) added but NOT working — routing bug found
+
+## Session 11 — v2.3.4 WARP Domain Routing Fix (2026-05-18)
+
+### Ahmad's Report
+WARP installs correctly and shows ON. Domains added via menu (ecoss-api.kpdn.gov.my, ecoss.kpdn.gov.my). Same domains work when bypassed on another VPS. But FreeFlow WARP bypass doesn't work — app shows loading spinner.
+
+### Root Cause Analysis
+
+**Critical Bug: jq filter in `add_warp_route()` deletes ALL Xray routing rules**
+
+The jq filter for removing old WARP domain rules has a fatal operator precedence bug:
+```
+select(.outboundTag != "warp" or .type != "field" or has("domain") | not)
+```
+
+In jq, `|` (pipe) has LOWER precedence than `or`. So this evaluates as:
+```
+(outboundTag != "warp" OR type != "field" OR has("domain")) | not
+```
+
+For ANY non-WARP rule (e.g., "direct"): `outboundTag != "warp"` → true → whole OR is true → `| not` → false → **RULE DELETED**
+
+Result: ALL existing routing rules are deleted, leaving only the new WARP domain rule. Xray loses its default routing rules (direct outbound, stats API inbound routing, etc.). This breaks WARP domain routing because Xray can't properly route traffic.
+
+**Fix:**
+```
+select((.outboundTag == "warp" and .type == "field" and has("domain")) | not)
+```
+
+This correctly keeps ALL rules except old WARP domain rules, then prepends the new WARP domain rule at the BEGINNING (before catch-all rules) so WARP domains match first.
+
+Same bug existed in `delete_warp_route()` — fixed there too.
+
+### Files Modified
+- `scripts/warp/install_warp.sh` — fixed jq filter in `add_warp_route()` and `delete_warp_route()`, WARP rule prepended instead of appended
