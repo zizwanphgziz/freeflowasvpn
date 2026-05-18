@@ -349,3 +349,59 @@ Complete implementation of all bugs identified in MoClaw's audit report.
 > "Anyway you can save the latest one into GitHub repo as it could work already... Especially on the chat.md and progress.md... if need to merge it...give me the link..."
 
 Status: All v2.3 fixes committed and working. Documentation updated. Ready for merge to init-branch.
+
+## Session 8 — v2.3.1 Connection Fix After Merge (2026-05-18)
+
+### Ahmad's Report
+After merging PR #6 (v2.3) to init-branch, fresh VPS installation fails to connect:
+- Fresh install from merged init-branch → config won't connect
+- Even the manual update fix from feature branch → still won't connect
+- Both attempts produced non-working VLESS configs
+- "What is the issue now?"
+
+### Root Cause Analysis
+
+Thorough code review of all key files (install_xray.sh, install_nginx.sh, manage_user.sh, wss_converter.sh, common.sh, setup.sh) revealed:
+
+**Bug 1: Share links not URL-encoded (ROOT CAUSE)**
+- Our share links generated `path=/vless-ws`
+- MoClaw's proven working links used `path=%2Fvless-ws` (URL-encoded)
+- The `/` in query parameter values is technically valid but many VPN clients (especially V2rayNG) fail to parse it correctly
+- V2rayNG may interpret `path=/vless-ws&encryption=none` as two separate things instead of `path` having value `/vless-ws`
+- Fix: Added `${path//\//%2F}` bash parameter expansion to URL-encode all forward slashes in path parameters
+- Applied to ALL protocols: VLESS (WS, HU, XHTTP), VMESS (WS), Trojan (WS)
+
+**Bug 2: wss_converter.sh wrong default paths**
+- `vless_ws_path="/"` → should be `"/vless-ws"`
+- `vless_hu_path="/vless-hu"` → should be `"/vless-hup"` (must match Xray config)
+- Fix: Corrected both defaults
+
+**Bug 3: wss_converter.sh wrong ports**
+- TLS WS links used port 443 → should be 8443 (443 is for Reality)
+- gRPC links used port 443 → should be 2083
+- Fix: Changed all TLS WS to 8443, all gRPC to 2083
+
+### Diagnostic Tool Added
+- New `scripts/core/diagnose.sh` — comprehensive connection diagnostic (380+ lines)
+- Checks: DNS resolution, SSL certificate validity, Xray config/status, Nginx config/status, port listening, firewall rules, WebSocket handshake test, sample share link generation
+- Accessible from menu option 17 (DIAGNOSE CONNECTION) or directly via `bash /usr/local/lib/freeflow/scripts/core/diagnose.sh`
+
+### Testing Result
+Ahmad applied the fix (Option A — quick update without reinstall):
+```bash
+cd /tmp && wget -q ".../devin/1779064428-v2.3-connection-fix.tar.gz" -O ff.tar.gz && ...
+```
+- Created new VLESS user
+- **VLESS WS WORKING** — HTTP handshake took 36ms
+- Connected via Cloudflare CDN (172.66.169.187:80)
+- App: VLESS + WS, port 80, path %2Fvless-ws
+- Ping: 136ms
+
+### Conclusion
+The URL encoding of path parameters in share links was the primary issue. VPN clients (especially V2rayNG) require `%2F` instead of raw `/` in query string path values. This fix resolved the connection failure that persisted across fresh installs and manual updates.
+
+### PR #7
+https://github.com/zizwanphgziz/freeflowasvpn/pull/7
+- Branch: `devin/1779064428-v2.3-connection-fix`
+- Target: `init-branch`
+- Status: Ready for merge
