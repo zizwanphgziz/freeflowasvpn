@@ -201,14 +201,55 @@
 
 ### PR #9: https://github.com/zizwanphgziz/freeflowasvpn/pull/9 — MERGED
 
-## Phase 15: v2.3.3 — DNS Diagnostic & WARP Fix — IN PROGRESS
+## Phase 15: v2.3.3 — DNS Diagnostic & WARP Fix — DONE
 - [x] **Bug 1**: DNS diagnostic false alarm — `dig` not installed, added `dnsutils` + fallback commands
 - [x] **Bug 2**: WARP WireGuard fallback missing marker file + Xray outbound config
 - [x] **Bug 3**: warp-svc daemon not started before warp-cli commands
 - [x] **Bug 4**: Menu WARP status only checks file marker, not actual connection
 - [x] Added `configure_xray_warp_wireguard()` — freedom outbound with sendThrough for WireGuard
 - [x] Added WARP status section to diagnostic tool (section 12)
-- [ ] **Testing**: Awaiting Ahmad's test
+- [x] **Testing**: Ahmad confirmed diagnostic clean, WARP installs and shows ON
+- [x] **BUT**: Domain bypass still not working (see Phase 16)
+
+### PR #10: https://github.com/zizwanphgziz/freeflowasvpn/pull/10 — MERGED
+
+## Phase 16: v2.3.4 — WARP Domain Routing Fix — IN PROGRESS
+- [x] **Bug**: jq operator precedence in `add_warp_route()` — `| not` negated entire OR chain, deleting ALL routing rules
+- [x] Fixed jq filter + prepended WARP rule instead of appending
+- [x] Ahmad tested: **still not working** — domain bypass fails even after jq fix
+- [x] Ahmad questioned fundamental WARP architecture — "it seems different from other autoscripts"
+
+### PR #11: https://github.com/zizwanphgziz/freeflowasvpn/pull/11 — CREATED (not yet merged, may be superseded)
+
+## Phase 17: WARP Architecture Research — DONE (research only, no code changes)
+
+### Research Findings
+Analyzed 5 reference implementations to compare with our WARP approach:
+1. **fscarmen/warp** (2K+ stars) — THE reference WARP script used by most autoscripts
+2. **marz-warp** (tawanamohammadi) — Marzban panel WARP setup
+3. **hamid-gh98/x-ui-scripts** — WireProxy SOCKS5 approach
+4. **Remnawave docs** — Best practice guide for Xray + WARP
+5. **XTLS/Xray-core discussions** — Official routing guidance
+
+### Key Discovery: Our Architecture is Wrong
+| Feature | FreeFlow (Current) | Reference Scripts (Correct) |
+|---------|-------------------|----------------------------|
+| WARP client | warp-cli SOCKS5 proxy | Xray native `protocol: "wireguard"` |
+| External daemon | Required (warp-svc) | None (Xray handles WireGuard internally) |
+| Dependency | cloudflare-warp package | `wgcf` binary (Go, works everywhere) |
+| Domain format | Plain: `"ecoss.kpdn.gov.my"` | With prefix: `"domain:kpdn.gov.my"` |
+| domainStrategy | Not set | `"IPOnDemand"` |
+| Outbound protocol | `"socks"` → 127.0.0.1:40000 | `"wireguard"` (native in Xray-core) |
+
+### Proposed Fix
+Rewrite `install_warp.sh` to use **Xray native WireGuard outbound** via `wgcf`:
+1. Download `wgcf` binary
+2. `wgcf register` + `wgcf generate` → get WireGuard keys from Cloudflare
+3. Configure Xray `protocol: "wireguard"` outbound (no external daemon needed)
+4. Domain routing with `"domain:"` prefix + `"domainStrategy": "IPOnDemand"`
+5. Keep same menu interface
+
+### Status: Research complete, awaiting Ahmad's approval before implementing
 
 ## Changelog
 | Date | Change |
@@ -243,3 +284,9 @@
 | 2026-05-18 | v2.3.3: Fixed WARP not working (WireGuard fallback missing marker+Xray config) |
 | 2026-05-18 | v2.3.3: Fixed warp-svc not started, added connect verification |
 | 2026-05-18 | v2.3.3: WARP menu shows actual connection status |
+| 2026-05-18 | v2.3.3: Merged to init-branch (PR #10) |
+| 2026-05-18 | v2.3.4: Fixed jq operator precedence bug in WARP domain routing (PR #11 created) |
+| 2026-05-18 | v2.3.4: Domain bypass still not working after jq fix — architectural mismatch identified |
+| 2026-05-18 | WARP research: Analyzed 5 reference implementations (fscarmen, marz-warp, hamid-gh98, Remnawave, XTLS) |
+| 2026-05-18 | WARP research: Our approach (warp-cli SOCKS5) differs from standard (Xray native WireGuard via wgcf) |
+| 2026-05-18 | WARP research: Proposed rewrite using Xray protocol:"wireguard" + wgcf — awaiting approval |
