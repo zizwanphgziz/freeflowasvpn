@@ -322,6 +322,7 @@ User=root
 EOF
 
     systemctl daemon-reload
+    systemctl enable xray 2>/dev/null
 
     # Validate JSON with jq before testing with xray
     if ! jq empty "${XRAY_CONFIG}" 2>/dev/null; then

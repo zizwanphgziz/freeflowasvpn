@@ -187,7 +187,16 @@
 - [x] **Tested and confirmed working**: VLESS WS connected, 36ms handshake, 136ms ping via CF CDN
 - [x] **V2rayNG confirmed working**: Connected on port 80 via Cloudflare CDN (172.66.169.187)
 
-### PR #7: https://github.com/zizwanphgziz/freeflowasvpn/pull/7
+### PR #8 (replaced #7): https://github.com/zizwanphgziz/freeflowasvpn/pull/8 — MERGED
+
+## Phase 14: v2.3.2 — Install Fix: Services Not Starting — IN PROGRESS
+- [x] **Root cause identified**: Nginx NOT running after fresh install (5 bugs in install flow)
+- [x] **Fix 1**: install_ssh_ws skips nginx config regen when nginx not installed
+- [x] **Fix 2**: Stale freeflow.conf removed before nginx package install
+- [x] **Fix 3**: Explicit `systemctl enable` for xray and nginx
+- [x] **Fix 4**: Final service ensure block in setup.sh with retry logic
+- [x] **Fix 5**: `mkdir -p /etc/nginx/conf.d` in generate_nginx_config
+- [ ] **Testing**: Awaiting Ahmad's fresh VPS test
 
 ## Changelog
 | Date | Change |
@@ -214,3 +223,5 @@
 | 2026-05-18 | v2.3.1: Fixed share link URL encoding (path=%2F), wss_converter defaults/ports |
 | 2026-05-18 | v2.3.1: Added diagnostic tool (diagnose.sh), menu option 17 |
 | 2026-05-18 | v2.3.1: VLESS WS confirmed working on V2rayNG via CF CDN (36ms handshake) |
+| 2026-05-18 | v2.3.1: Merged to init-branch (PR #8) |
+| 2026-05-18 | v2.3.2: Fixed 5 install-flow bugs causing Nginx/Xray not starting after fresh install |

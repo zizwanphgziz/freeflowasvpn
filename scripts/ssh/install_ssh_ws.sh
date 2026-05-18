@@ -123,7 +123,9 @@ EOF
     restart_service "${SSH_WS_SERVICE}"
 
     # Regenerate nginx config to include SSH WS location
-    if [[ -f "${SCRIPT_DIR}/../nginx/install_nginx.sh" ]]; then
+    # Only if nginx is already installed (skip during initial setup — setup.sh
+    # calls install_nginx_full AFTER this, which generates the config properly)
+    if command -v nginx &>/dev/null && [[ -f "${SCRIPT_DIR}/../nginx/install_nginx.sh" ]]; then
         source "${SCRIPT_DIR}/../nginx/install_nginx.sh"
         generate_nginx_config
     fi

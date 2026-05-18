@@ -14,8 +14,13 @@ install_nginx() {
     systemctl stop apache2 2>/dev/null
     systemctl disable apache2 2>/dev/null
 
+    # Remove any stale FreeFlow config from previous installs so nginx can start
+    # with the default config during package install. Our config is regenerated later.
+    rm -f /etc/nginx/conf.d/freeflow.conf 2>/dev/null
+
     apt-get install -y nginx > /dev/null 2>&1
     if command -v nginx &>/dev/null; then
+        systemctl enable nginx 2>/dev/null
         msg_ok "Nginx installed"
     else
         msg_fail "Nginx installation failed"
@@ -78,7 +83,9 @@ setup_ssl_certificate() {
         fi
     fi
 
-    systemctl start nginx 2>/dev/null
+    if ! systemctl start nginx 2>/dev/null; then
+        msg_warn "Nginx failed to start after SSL setup — will retry after config generation"
+    fi
 }
 
 generate_nginx_config() {
@@ -86,6 +93,9 @@ generate_nginx_config() {
 
     local domain
     domain=$(get_domain)
+
+    # Ensure directories exist
+    mkdir -p /etc/nginx/conf.d
 
     # Load paths
     local vless_ws_path="/vless-ws"
@@ -367,10 +377,20 @@ server {
 NGINXEOF
 
     rm -f /etc/nginx/sites-enabled/default 2>/dev/null
+    rm -f /etc/nginx/sites-enabled/* 2>/dev/null
 
     if nginx -t 2>/dev/null; then
         msg_ok "Nginx configuration valid"
-        restart_service nginx
+        if ! restart_service nginx; then
+            msg_warn "Nginx restart failed — retrying..."
+            sleep 2
+            systemctl restart nginx
+            if systemctl is-active --quiet nginx; then
+                msg_ok "Nginx started on retry"
+            else
+                msg_fail "Nginx still not running — check: journalctl -u nginx --no-pager -n 20"
+            fi
+        fi
     else
         msg_fail "Nginx configuration has errors"
         nginx -t
