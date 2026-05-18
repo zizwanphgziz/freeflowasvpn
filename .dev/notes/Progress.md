@@ -174,9 +174,20 @@
 
 ### Known Limitations
 - Multipath `/` not yet supported — requires different Nginx approach (not `if` blocks)
-- V2rayNG compatibility unconfirmed — Nekobox and Netmod work fine
 
-### Status: READY FOR MERGE TO init-branch
+### Status: MERGED TO init-branch (PR #6)
+
+## Phase 13: v2.3.1 — Connection Fix After Merge — DONE
+- [x] **Root cause identified**: Share link paths not URL-encoded (`/vless-ws` → `%2Fvless-ws`)
+- [x] **URL encoding fix**: All share links now use `%2F` for path parameters (VLESS, VMESS, Trojan)
+- [x] **wss_converter.sh fix**: Corrected default paths (`/` → `/vless-ws`, `/vless-hu` → `/vless-hup`)
+- [x] **wss_converter.sh fix**: Corrected TLS ports (443 → 8443 for WS, 443 → 2083 for gRPC)
+- [x] **Diagnostic tool**: Added `scripts/core/diagnose.sh` — comprehensive connection diagnostic
+- [x] **Menu integration**: Diagnose accessible from menu option 17
+- [x] **Tested and confirmed working**: VLESS WS connected, 36ms handshake, 136ms ping via CF CDN
+- [x] **V2rayNG confirmed working**: Connected on port 80 via Cloudflare CDN (172.66.169.187)
+
+### PR #7: https://github.com/zizwanphgziz/freeflowasvpn/pull/7
 
 ## Changelog
 | Date | Change |
@@ -199,3 +210,7 @@
 | 2026-05-17 | v2.3: Tested on Debian 13 VPS — VLESS WS working on /vless-ws |
 | 2026-05-17 | v2.3: Multipath / investigated — reverted (needs different approach) |
 | 2026-05-18 | v2.3: Documentation updated, ready for merge to init-branch |
+| 2026-05-18 | v2.3: Merged to init-branch (PR #6) |
+| 2026-05-18 | v2.3.1: Fixed share link URL encoding (path=%2F), wss_converter defaults/ports |
+| 2026-05-18 | v2.3.1: Added diagnostic tool (diagnose.sh), menu option 17 |
+| 2026-05-18 | v2.3.1: VLESS WS confirmed working on V2rayNG via CF CDN (36ms handshake) |
