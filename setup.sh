@@ -13,7 +13,7 @@ REPO_NAME="freeflowasvpn"
 REPO_URL="https://github.com/${REPO_OWNER}/${REPO_NAME}"
 REPO_BRANCH="init-branch"
 INSTALL_DIR="/usr/local/lib/freeflow"
-VERSION="2.3.0"
+VERSION="2.3.2"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -236,6 +236,45 @@ chmod +x /usr/local/bin/freeflow
 ln -sf /usr/local/bin/freeflow /usr/local/bin/menu 2>/dev/null
 
 echo 'clear ; freeflow' > /root/.profile 2>/dev/null
+
+# --- Ensure All Services Enabled & Running ---
+# This is the final safety net: even if individual install steps had errors,
+# force-enable and restart all services to ensure they're running now and
+# will auto-start after reboot.
+msg_info "Ensuring all services are enabled and running..."
+systemctl enable xray 2>/dev/null
+systemctl enable nginx 2>/dev/null
+systemctl enable ssh-ws 2>/dev/null
+
+# Restart in correct order: Xray first (binds to ports), then Nginx (reverse proxy)
+systemctl restart xray 2>/dev/null
+sleep 1
+systemctl restart nginx 2>/dev/null
+sleep 1
+
+# Verify services are actually running
+svc_ok=true
+for svc in xray nginx; do
+    if ! systemctl is-active --quiet "${svc}"; then
+        msg_fail "${svc} is NOT running after final restart"
+        # Try one more time with verbose output
+        echo -e " ${YELLOW}Retrying ${svc}...${NC}"
+        systemctl restart "${svc}" 2>&1 | head -5
+        sleep 2
+        if systemctl is-active --quiet "${svc}"; then
+            msg_ok "${svc} started on retry"
+        else
+            msg_fail "${svc} still not running — check: journalctl -u ${svc} --no-pager -n 20"
+            svc_ok=false
+        fi
+    else
+        msg_ok "${svc} running"
+    fi
+done
+
+if [[ "${svc_ok}" == true ]]; then
+    msg_ok "All services running"
+fi
 
 # --- Post-Install Verification ---
 source "${INSTALL_DIR}/scripts/core/verify.sh"

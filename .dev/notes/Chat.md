@@ -400,8 +400,66 @@ cd /tmp && wget -q ".../devin/1779064428-v2.3-connection-fix.tar.gz" -O ff.tar.g
 ### Conclusion
 The URL encoding of path parameters in share links was the primary issue. VPN clients (especially V2rayNG) require `%2F` instead of raw `/` in query string path values. This fix resolved the connection failure that persisted across fresh installs and manual updates.
 
-### PR #7
-https://github.com/zizwanphgziz/freeflowasvpn/pull/7
-- Branch: `devin/1779064428-v2.3-connection-fix`
+### PR #8 (replaced #7 due to merge conflicts)
+https://github.com/zizwanphgziz/freeflowasvpn/pull/8
+- Branch: `devin/1779064428-v2.3.1-fix`
 - Target: `init-branch`
-- Status: Ready for merge
+- Status: MERGED
+
+## Session 9 — v2.3.2 Install Fix: Services Not Starting (2026-05-18)
+
+### Ahmad's Report
+After merging PR #8 (v2.3.1), fresh install from init-branch still has connection issues:
+- XRAY shows OFF before creating a user (ON only after user creation restarts xray)
+- VLESS config times out — connection refused
+- Diagnostic output reveals: **Nginx service NOT running**, ports 80/8080/8443/8880/2083/2086/2087 all down
+- "why the fix can't just be in the installer...seems like need to manually fix everytime"
+
+### Root Cause Analysis
+
+Diagnostic output showed:
+- `[FAIL] Nginx service: NOT running` — all Nginx ports down
+- `[OK] Nginx config: syntax OK` — config is valid
+- `[OK] SSL cert files exist` — cert from ZeroSSL (issuer=C=AT) via acme.sh
+- Xray inbound ports (10001-10008) listening — Xray backend works
+- Firewall rules all OK
+
+**5 bugs found in the installation flow:**
+
+**Bug 1: install_ssh_ws calls generate_nginx_config prematurely**
+- `install_ssh_ws()` (line 126-129) calls `generate_nginx_config()` to add `/ssh` location
+- But in setup.sh, SSH WS is installed BEFORE nginx: `install_ssh_ws` → then `install_nginx_full`
+- On a VPS with previous nginx install: writes freeflow.conf with SSL cert refs BEFORE cert exists → nginx fails to start when apt postinst triggers service start
+- Fix: Added `command -v nginx` check — only regenerate nginx config if nginx is already installed
+
+**Bug 2: No stale config cleanup before nginx install**
+- On reinstall, `/etc/nginx/conf.d/freeflow.conf` from previous install may exist
+- When `apt-get install -y nginx` runs, Debian's postinst starts nginx
+- Nginx tries to load stale freeflow.conf referencing potentially missing SSL cert → fails
+- Fix: `rm -f /etc/nginx/conf.d/freeflow.conf` before nginx package install
+
+**Bug 3: No explicit systemctl enable**
+- Neither `install_xray.sh` nor `install_nginx.sh` called `systemctl enable`
+- On some systems, services may not auto-start after reboot without explicit enable
+- Fix: Added `systemctl enable xray/nginx` in both install scripts
+
+**Bug 4: No final service ensure block**
+- If any individual install step fails silently, services stay down
+- No safety net to catch failed starts at the end of setup.sh
+- Fix: Added comprehensive "Ensure All Services Running" block before verify_install:
+  - Enable all services
+  - Restart xray, then nginx (correct order)
+  - Verify each is running; retry once with verbose output if not
+  - Print specific error message with journalctl command for debugging
+
+**Bug 5: Missing directory creation in generate_nginx_config**
+- `generate_nginx_config()` writes to `/etc/nginx/conf.d/freeflow.conf`
+- But never ensures `/etc/nginx/conf.d/` exists
+- On edge cases (custom nginx install, missing dirs), would fail silently
+- Fix: Added `mkdir -p /etc/nginx/conf.d` at start of function
+
+### Files Modified
+- `setup.sh` — version 2.3.2, added final service enable+restart block
+- `scripts/nginx/install_nginx.sh` — stale config cleanup, enable nginx, mkdir, retry logic
+- `scripts/xray/install_xray.sh` — enable xray service after daemon-reload
+- `scripts/ssh/install_ssh_ws.sh` — skip nginx config regen if nginx not installed
