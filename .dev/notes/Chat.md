@@ -511,3 +511,159 @@ After v2.3.2 install fix confirmed working (VPN connects right away), two remain
 - `scripts/core/diagnose.sh` — DNS fallback (host/nslookup/getent), WARP status section added
 - `scripts/warp/install_warp.sh` — WireGuard marker+Xray config, warp-svc startup, connect verification, new `configure_xray_warp_wireguard()` function
 - `scripts/menu/menu.sh` — WARP status shows actual connection state
+
+### Testing Result
+- Ahmad confirmed: Diagnostic clean (DNS error gone), WARP installs and shows ON
+- BUT: **WARP domain bypass still not working** — app shows loading spinner after adding domains
+- jq filter bug found and fixed in PR #11 (operator precedence: `| not` negated entire OR chain, deleting all routing rules)
+- Even after jq fix applied, domain bypass still doesn't work
+- Ahmad questioned: "Are you sure your concept of WARP is like most autoscript VPN have... Cause it seems different..."
+
+### PR #10: https://github.com/zizwanphgziz/freeflowasvpn/pull/10 — MERGED
+
+## Session 11 — v2.3.4 WARP Domain Routing Fix (2026-05-18)
+
+### Ahmad's Report
+- WARP installed and ON, domains added for bypass
+- Same domains work on other VPS with different autoscript
+- But FreeFlow's WARP bypass doesn't work — app shows loading spinner
+- "Are you sure your concept of WARP is like most autoscript VPN have?"
+
+### Root Cause Analysis — jq Filter Bug
+
+**Bug: jq operator precedence in `add_warp_route()` deletes ALL routing rules**
+
+The jq `select` filter had incorrect logic:
+```bash
+# OLD (BUGGY) — .outboundTag != "warp" or .type != "field" or has("domain") | not
+# The pipe `|` has LOWER precedence than `or`, so:
+# Actual: (.outboundTag != "warp" or .type != "field" or has("domain")) | not
+# This negates the ENTIRE OR chain → selects NOTHING → deletes ALL rules
+
+# NEW (FIXED) — proper parenthesization:
+# (.outboundTag == "warp" and .type == "field" and has("domain")) | not
+# Only removes existing WARP domain rules, keeps everything else
+```
+
+Also changed rule order: WARP domain rule PREPENDED (first) instead of appended, so it matches before any catch-all rules.
+
+### Testing Result
+- Ahmad applied the fix: **still not working** — "Still cannot load the app after try to bypass those domains thru the amended warp"
+- This signals the jq fix alone didn't solve the problem — likely architectural mismatch
+
+### PR #11: https://github.com/zizwanphgziz/freeflowasvpn/pull/11 — CREATED (not yet merged)
+
+## Session 12 — WARP Architecture Research (2026-05-18)
+
+### Ahmad's Request
+> "Can you do some research 1st... Cause I think others autoscript VPN also take the WARP functions from somewhere... try GitHub and look the best and latest WARP functions for autoscript VPN... If it's good then maybe we can integrate them in our script..."
+
+### Research: How Other Autoscripts Implement WARP
+
+Analyzed the following reference implementations:
+
+#### 1. fscarmen/warp (2,074 stars) — THE reference WARP script
+- **URL**: https://github.com/fscarmen/warp-sh / https://gitlab.com/fscarmen/warp
+- **Approach**: Uses `wgcf` (Go CLI tool, 8K+ stars) to register with Cloudflare and get WireGuard keys
+- **Three modes**: warp-cli, warp-go, kernel WireGuard
+- **Xray integration**: Provides template configs for SOCKS5 proxy (warp-cli mode) or interface binding (WireGuard mode)
+- **Key detail**: SOCKS5 proxy on `127.0.0.1:40000` — this is the "standard" port used across the ecosystem
+
+#### 2. marz-warp / tawanamohammadi (Marzban WARP setup)
+- **URL**: https://github.com/tawanamohammadi/marz-warp
+- **Approach**: Uses `wgcf register` + `wgcf generate` to get WireGuard config
+- **Two modes**:
+  - **Xray Core mode** — `protocol: "wireguard"` outbound (Xray handles WireGuard internally, no system WireGuard needed)
+  - **Kernel mode** — System WireGuard + `protocol: "freedom"` outbound with `sockopt.interface: "warp"`
+- **Xray outbound config (Xray Core mode)**:
+  ```json
+  {
+      "tag": "warp",
+      "protocol": "wireguard",
+      "settings": {
+          "secretKey": "PRIVATE_KEY",
+          "address": ["172.16.0.2/32", "fd01:db8:85a3::1/128"],
+          "peers": [{
+              "publicKey": "PUBLIC_KEY",
+              "endpoint": "engage.cloudflareclient.com:2408"
+          }],
+          "reserved": [0, 0, 0],
+          "mtu": 1280
+      }
+  }
+  ```
+- **Domain routing**:
+  ```json
+  {
+      "outboundTag": "warp",
+      "domain": ["geosite:google", "geosite:netflix", "openai.com", "spotify.com"],
+      "type": "field"
+  }
+  ```
+
+#### 3. hamid-gh98/x-ui-scripts (WireProxy approach)
+- **URL**: https://github.com/hamid-gh98/x-ui-scripts
+- **Approach**: Uses WireProxy (WireGuard-to-SOCKS5 proxy)
+- **Result**: SOCKS5 proxy on `127.0.0.1:40000`
+- **Thanks to**: fscarmen (credited in script)
+
+#### 4. Remnawave Documentation (best practice guide)
+- **URL**: https://remna.st/docs/guides/warp-outbound-over-wg
+- **Approach**: `wgcf register` + `wgcf generate` → extract keys → Xray `protocol: "wireguard"` outbound
+- **Key config fields**:
+  - `"secretKey"` — from wgcf-profile.conf PrivateKey
+  - `"DNS": "1.1.1.1"` — for DNS resolution inside tunnel
+  - `"kernelMode": false` — use userspace WireGuard (no kernel module needed)
+  - `"address"` — from wgcf-profile.conf Address
+  - `"peers"` — with Cloudflare's public key and endpoint
+- **Advantage**: "No need to install warp-cli on every node"
+
+#### 5. XTLS/Xray-core Discussions (#3386)
+- **URL**: https://github.com/XTLS/Xray-core/discussions/3386
+- **Key insight**: Domain routing requires `"domainStrategy": "IPOnDemand"` in routing config
+- **Domain format**: Use `"domain:example.com"` for subdomain matching
+- **Rule order**: Specific rules (WARP domains) BEFORE catch-all rules
+
+### Architecture Comparison: Our Approach vs Reference Scripts
+
+| Feature | FreeFlow (Current) | Reference Scripts (Best Practice) |
+|---------|-------------------|----------------------------------|
+| **WARP client** | warp-cli SOCKS5 proxy | Xray native `protocol: "wireguard"` |
+| **Fallback** | System WireGuard + freedom/sendThrough | Kernel WireGuard + freedom/sockopt.interface |
+| **External daemon** | Required (warp-svc must be running) | None (Xray handles WireGuard internally) |
+| **Dependency** | cloudflare-warp package (may not install on Debian 13) | `wgcf` binary (Go, works everywhere) |
+| **Domain format** | Plain text: `"ecoss.kpdn.gov.my"` | With prefix: `"domain:kpdn.gov.my"` |
+| **domainStrategy** | Not set | `"IPOnDemand"` |
+| **Key generation** | Manual (wg genkey, Cloudflare API) | `wgcf register` + `wgcf generate` |
+| **Outbound protocol** | `"socks"` → 127.0.0.1:40000 | `"wireguard"` (native in Xray) |
+
+### Root Cause of Failure
+
+Our WARP domain bypass fails because:
+1. **warp-cli SOCKS5 proxy may not actually be listening** — `warp-svc` daemon unreliable on Debian 13
+2. **No `domainStrategy`** in routing config — Xray may not properly resolve domains for rule matching
+3. **Domain format wrong** — plain `"ecoss.kpdn.gov.my"` doesn't match subdomains; should use `"domain:kpdn.gov.my"` prefix
+4. **WireGuard fallback uses `sendThrough`** instead of the proven `sockopt.interface` approach
+5. **Fundamentally different architecture** — reference scripts use Xray's built-in WireGuard protocol, not external SOCKS5 proxy
+
+### Proposed Fix: Rewrite WARP to Use Xray Native WireGuard
+
+**Plan** (pending Ahmad's approval):
+1. Download `wgcf` binary (small Go binary, ~5MB, works on all Linux)
+2. `wgcf register` → get Cloudflare WARP account credentials
+3. `wgcf generate` → get WireGuard profile (PrivateKey, PublicKey, Address)
+4. Configure Xray outbound with `protocol: "wireguard"` — handled entirely inside Xray
+5. Domain routing with `"domain:"` prefix + `"domainStrategy": "IPOnDemand"`
+6. Keep same menu interface (install/uninstall/add domain/delete domain/list domains)
+
+**Benefits**:
+- No dependency on `warp-cli` or `cloudflare-warp` package
+- No external daemon needed (no warp-svc)
+- Works on Debian 13 and any Linux
+- Matches proven architecture used by all reference scripts
+- Xray handles WireGuard tunnel internally — most reliable approach
+
+### Status
+- Research complete
+- Fix NOT implemented yet — awaiting Ahmad's approval on approach
+- PR #11 (jq fix) still pending — may be superseded by full WARP rewrite
