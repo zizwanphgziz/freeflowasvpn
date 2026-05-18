@@ -42,22 +42,47 @@ install_warp() {
         if ! command -v warp-cli &>/dev/null; then
             msg_warn "Official WARP client not available for this OS version"
             msg_info "Falling back to WireGuard-based WARP setup..."
-            install_warp_wireguard
+            if install_warp_wireguard; then
+                mkdir -p "${CONFIG_DIR}/modules"
+                touch "${CONFIG_DIR}/modules/warp_installed"
+                msg_ok "WARP installed via WireGuard"
+            fi
             return $?
         fi
     else
-        install_warp_wireguard
+        if install_warp_wireguard; then
+            mkdir -p "${CONFIG_DIR}/modules"
+            touch "${CONFIG_DIR}/modules/warp_installed"
+            msg_ok "WARP installed via WireGuard"
+        fi
         return $?
     fi
 
     # Register and connect WARP
     msg_info "Registering WARP..."
+
+    # Ensure warp-svc daemon is running
+    systemctl enable warp-svc 2>/dev/null
+    systemctl start warp-svc 2>/dev/null
+    sleep 2
+
     warp-cli registration new 2>/dev/null || warp-cli register 2>/dev/null
 
     # Set WARP mode to proxy (SOCKS5 on localhost)
     warp-cli mode proxy 2>/dev/null
     warp-cli proxy port 40000 2>/dev/null
     warp-cli connect 2>/dev/null
+    sleep 2
+
+    # Verify WARP is connected
+    local warp_status
+    warp_status=$(warp-cli status 2>/dev/null)
+    if echo "${warp_status}" | grep -qi "connected"; then
+        msg_ok "WARP connected"
+    else
+        msg_warn "WARP may not be connected: ${warp_status}"
+        msg_info "Try manually: warp-cli connect"
+    fi
 
     # Save WARP config
     mkdir -p "${WARP_CONFIG}"
@@ -121,8 +146,18 @@ WGEOF
         wg-quick up warp 2>/dev/null
         systemctl enable wg-quick@warp 2>/dev/null
 
+        # Add routing rules so Xray can send traffic through WARP
+        # ip rule: packets from warp IP use table 51840
+        # ip route: table 51840 sends everything through warp interface
+        ip rule add from "${warp_ipv4}" table 51840 2>/dev/null
+        ip route add default dev warp table 51840 2>/dev/null
+
         mkdir -p "${WARP_CONFIG}"
         echo "wireguard" > "${WARP_CONFIG}/method"
+        echo "${warp_ipv4}" > "${WARP_CONFIG}/warp_ip"
+
+        # Configure Xray WARP outbound (freedom with sendThrough)
+        configure_xray_warp_wireguard "${warp_ipv4}"
 
         msg_ok "WARP WireGuard tunnel established"
     else
@@ -165,6 +200,40 @@ configure_xray_warp() {
         mv "${tmp_config}" "${XRAY_CONFIG}"
         restart_service xray
         msg_ok "Xray WARP outbound added"
+    else
+        rm -f "${tmp_config}"
+        msg_warn "Could not update Xray config for WARP"
+    fi
+}
+
+configure_xray_warp_wireguard() {
+    local warp_ip="$1"
+    msg_info "Configuring Xray WARP routing (WireGuard)..."
+
+    if grep -q '"warp"' "${XRAY_CONFIG}" 2>/dev/null; then
+        msg_info "WARP already configured in Xray"
+        return 0
+    fi
+
+    # WireGuard WARP uses freedom outbound with sendThrough to bind to warp interface IP
+    local tmp_config
+    tmp_config=$(mktemp)
+
+    jq --arg warp_ip "${warp_ip}" '
+        .outbounds += [{
+            "protocol": "freedom",
+            "settings": {
+                "domainStrategy": "UseIP"
+            },
+            "sendThrough": $warp_ip,
+            "tag": "warp"
+        }]
+    ' "${XRAY_CONFIG}" > "${tmp_config}"
+
+    if [[ -s "${tmp_config}" ]]; then
+        mv "${tmp_config}" "${XRAY_CONFIG}"
+        restart_service xray
+        msg_ok "Xray WARP outbound added (WireGuard mode)"
     else
         rm -f "${tmp_config}"
         msg_warn "Could not update Xray config for WARP"
