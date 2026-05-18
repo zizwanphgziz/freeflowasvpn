@@ -31,6 +31,11 @@ show_vless_config() {
     local vless_xhttp_path="/vless-xhttp" vless_grpc_sn="vless-grpc"
     [[ -f "${CONFIG_DIR}/paths.conf" ]] && source "${CONFIG_DIR}/paths.conf"
 
+    # URL-encode paths for share links (/ → %2F)
+    local vless_ws_enc="${vless_ws_path//\//%2F}"
+    local vless_hu_enc="${vless_hu_path//\//%2F}"
+    local vless_xhttp_enc="${vless_xhttp_path//\//%2F}"
+
     local reality_public reality_short_id reality_dest
     reality_public=$(cat "${CONFIG_DIR}/reality_public_key" 2>/dev/null)
     reality_short_id=$(cat "${CONFIG_DIR}/reality_short_id" 2>/dev/null)
@@ -58,22 +63,22 @@ show_vless_config() {
     echo -e " gRPC ServiceName    : ${vless_grpc_sn}"
     echo -e "${CYAN}═════════════════════════════════════════${NC}"
     echo -e " ${BOLD}LINK VLESS WS TLS :${NC}"
-    echo -e " vless://${uuid}@${addr}:8443?path=${vless_ws_path}&security=tls&encryption=none&type=ws&sni=${domain}#${username}"
+    echo -e " vless://${uuid}@${addr}:8443?path=${vless_ws_enc}&security=tls&encryption=none&type=ws&sni=${domain}#${username}"
     echo -e "${CYAN}═════════════════════════════════════════${NC}"
     echo -e " ${BOLD}LINK VLESS WS NTLS :${NC}"
-    echo -e " vless://${uuid}@${addr}:80?path=${vless_ws_path}&encryption=none&type=ws&host=${domain}#${username}"
+    echo -e " vless://${uuid}@${addr}:80?path=${vless_ws_enc}&encryption=none&type=ws&host=${domain}#${username}"
     echo -e "${CYAN}═════════════════════════════════════════${NC}"
     echo -e " ${BOLD}LINK VLESS HTTPUPGRADE TLS :${NC}"
-    echo -e " vless://${uuid}@${addr}:8443?path=${vless_hu_path}&security=tls&encryption=none&type=httpupgrade&sni=${domain}#${username}"
+    echo -e " vless://${uuid}@${addr}:8443?path=${vless_hu_enc}&security=tls&encryption=none&type=httpupgrade&sni=${domain}#${username}"
     echo -e "${CYAN}═════════════════════════════════════════${NC}"
     echo -e " ${BOLD}LINK VLESS HTTPUPGRADE NTLS :${NC}"
-    echo -e " vless://${uuid}@${addr}:80?path=${vless_hu_path}&encryption=none&type=httpupgrade&host=${domain}#${username}"
+    echo -e " vless://${uuid}@${addr}:80?path=${vless_hu_enc}&encryption=none&type=httpupgrade&host=${domain}#${username}"
     echo -e "${CYAN}═════════════════════════════════════════${NC}"
     echo -e " ${BOLD}LINK VLESS XHTTP NTLS :${NC}"
-    echo -e " vless://${uuid}@${addr}:8080?mode=auto&path=${vless_xhttp_path}&encryption=none&type=xhttp&host=${domain}#${username}"
+    echo -e " vless://${uuid}@${addr}:8080?mode=auto&path=${vless_xhttp_enc}&encryption=none&type=xhttp&host=${domain}#${username}"
     echo -e "${CYAN}═════════════════════════════════════════${NC}"
     echo -e " ${BOLD}LINK VLESS XHTTP TLS :${NC}"
-    echo -e " vless://${uuid}@${addr}:8443?mode=auto&path=${vless_xhttp_path}&security=tls&encryption=none&type=xhttp&sni=${domain}#${username}"
+    echo -e " vless://${uuid}@${addr}:8443?mode=auto&path=${vless_xhttp_enc}&security=tls&encryption=none&type=xhttp&sni=${domain}#${username}"
     echo -e "${CYAN}═════════════════════════════════════════${NC}"
     echo -e " ${BOLD}LINK VLESS GRPC :${NC}"
     echo -e " vless://${uuid}@${addr}:2083?mode=gun&security=tls&encryption=none&type=grpc&serviceName=${vless_grpc_sn}&sni=${domain}#${username}"
@@ -92,6 +97,9 @@ show_vmess_config() {
 
     local vmess_ws_path="/vmess-ws" vmess_grpc_sn="vmess-grpc"
     [[ -f "${CONFIG_DIR}/paths.conf" ]] && source "${CONFIG_DIR}/paths.conf"
+
+    # URL-encode paths for share links (/ → %2F)
+    local vmess_ws_enc="${vmess_ws_path//\//%2F}"
 
     # VMESS share link uses base64-encoded JSON
     local vmess_ws_tls vmess_ws_ntls vmess_grpc
@@ -138,6 +146,9 @@ show_trojan_config() {
     local trojan_ws_path="/trojan-ws" trojan_grpc_sn="trojan-grpc"
     [[ -f "${CONFIG_DIR}/paths.conf" ]] && source "${CONFIG_DIR}/paths.conf"
 
+    # URL-encode paths for share links (/ → %2F)
+    local trojan_ws_enc="${trojan_ws_path//\//%2F}"
+
     echo ""
     echo -e "${CYAN}═════════════════════════════════════════${NC}"
     echo -e "       ${BOLD}XRAY TROJAN CONFIG${NC}"
@@ -155,10 +166,10 @@ show_trojan_config() {
     echo -e " gRPC ServiceName    : ${trojan_grpc_sn}"
     echo -e "${CYAN}═════════════════════════════════════════${NC}"
     echo -e " ${BOLD}LINK TROJAN WS TLS :${NC}"
-    echo -e " trojan://${uuid}@${addr}:8443?path=${trojan_ws_path}&security=tls&type=ws&sni=${domain}#${username}"
+    echo -e " trojan://${uuid}@${addr}:8443?path=${trojan_ws_enc}&security=tls&type=ws&sni=${domain}#${username}"
     echo -e "${CYAN}═════════════════════════════════════════${NC}"
     echo -e " ${BOLD}LINK TROJAN WS NTLS :${NC}"
-    echo -e " trojan://${uuid}@${addr}:80?path=${trojan_ws_path}&type=ws&host=${domain}#${username}"
+    echo -e " trojan://${uuid}@${addr}:80?path=${trojan_ws_enc}&type=ws&host=${domain}#${username}"
     echo -e "${CYAN}═════════════════════════════════════════${NC}"
     echo -e " ${BOLD}LINK TROJAN GRPC :${NC}"
     echo -e " trojan://${uuid}@${addr}:2083?mode=gun&security=tls&type=grpc&serviceName=${trojan_grpc_sn}&sni=${domain}#${username}"

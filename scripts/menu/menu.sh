@@ -81,6 +81,7 @@ main_menu() {
         echo -e " ${GREEN}[ 08 ]${NC} CHECK RAM USAGE        ${GREEN}[ 14 ]${NC} SERVICE STATUS"
         echo -e " ${GREEN}[ 09 ]${NC} REBOOT VPS             ${GREEN}[ 15 ]${NC} SOCKS WARP"
         echo -e " ${GREEN}[ 10 ]${NC} UPDATE SCRIPT          ${GREEN}[ 16 ]${NC} ADS BLOCKER"
+        echo -e "                                ${GREEN}[ 17 ]${NC} DIAGNOSE CONNECTION"
         echo -e "$L"
         echo -e " ${RED}[  0 ]${NC} EXIT MENU"
         echo -e "$L"
@@ -107,6 +108,7 @@ main_menu() {
             14) service_status ;;
             15) menu_warp ;;
             16) menu_ads ;;
+            17) source "${SCRIPT_BASE}/core/diagnose.sh" ;;
             00|0) echo -e "\n ${GREEN}Goodbye!${NC}\n"; exit 0 ;;
             *) msg_warn "Invalid option" ;;
         esac
