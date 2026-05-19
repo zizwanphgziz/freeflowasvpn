@@ -13,8 +13,9 @@ WARP_CONFIG="${CONFIG_DIR}/warp"
 
 # --- Install wgcf binary ---
 install_wgcf() {
-    if command -v wgcf &>/dev/null && wgcf --version &>/dev/null; then
-        msg_ok "wgcf already installed ($(wgcf --version 2>/dev/null | head -1))"
+    # Validate existing binary with --help (wgcf has no --version flag)
+    if command -v wgcf &>/dev/null && wgcf --help &>/dev/null; then
+        msg_ok "wgcf already installed"
         return 0
     fi
 
@@ -50,17 +51,48 @@ install_wgcf() {
     if wget -q -O /usr/local/bin/wgcf "${wgcf_url}" 2>/dev/null || \
        curl -sL -o /usr/local/bin/wgcf "${wgcf_url}" 2>/dev/null; then
         chmod +x /usr/local/bin/wgcf
-        # Verify it's a real binary, not an HTML error page
-        if ! wgcf --version &>/dev/null; then
+        # Verify it's a real binary (wgcf has no --version, use --help)
+        if ! wgcf --help &>/dev/null; then
             rm -f /usr/local/bin/wgcf
             msg_fail "Downloaded file is not a valid wgcf binary"
-            return 1
+            msg_info "Trying warp-go fallback..."
+            install_warp_go
+            return $?
         fi
         msg_ok "wgcf ${wgcf_tag} installed"
     else
-        msg_fail "Could not download wgcf"
+        msg_warn "Could not download wgcf — trying warp-go fallback..."
+        install_warp_go
+        return $?
+    fi
+}
+
+# --- Fallback: install warp-go binary ---
+install_warp_go() {
+    msg_info "Downloading warp-go..."
+
+    local warpgo_dir="${WARP_CONFIG}/warp-go"
+    mkdir -p "${warpgo_dir}"
+
+    if wget -q -O "${warpgo_dir}/warp-go.zip" \
+       "https://raw.githubusercontent.com/JinGGoVPN/DATA/main/file/warp-go.zip" 2>/dev/null || \
+       curl -sL -o "${warpgo_dir}/warp-go.zip" \
+       "https://raw.githubusercontent.com/JinGGoVPN/DATA/main/file/warp-go.zip" 2>/dev/null; then
+        cd "${warpgo_dir}" || return 1
+        unzip -o warp-go.zip >/dev/null 2>&1
+        chmod +x "${warpgo_dir}/warp-go"
+        if "${warpgo_dir}/warp-go" -h &>/dev/null; then
+            msg_ok "warp-go installed"
+            # Mark that we're using warp-go instead of wgcf
+            echo "warp-go" > "${WARP_CONFIG}/backend"
+            return 0
+        fi
+        msg_fail "warp-go binary is not valid"
         return 1
     fi
+
+    msg_fail "Could not download warp-go"
+    return 1
 }
 
 # --- Register with Cloudflare WARP and generate WireGuard profile ---
@@ -70,6 +102,15 @@ register_warp() {
     mkdir -p "${WARP_CONFIG}"
     cd "${WARP_CONFIG}" || return 1
 
+    local backend
+    backend=$(cat "${WARP_CONFIG}/backend" 2>/dev/null || echo "wgcf")
+
+    if [[ "${backend}" == "warp-go" ]]; then
+        register_warp_go
+        return $?
+    fi
+
+    # --- wgcf registration path ---
     # Remove stale account/profile files so wgcf starts fresh
     rm -f "${WARP_CONFIG}/wgcf-account.toml" "${WARP_CONFIG}/wgcf-profile.conf"
 
@@ -105,13 +146,71 @@ register_warp() {
     fi
     msg_ok "WireGuard profile generated"
 
-    # Extract keys from wgcf-profile.conf
+    extract_wireguard_keys "${WARP_CONFIG}/wgcf-profile.conf"
+}
+
+# --- Register via warp-go (fallback) ---
+register_warp_go() {
+    msg_info "Registering via warp-go..."
+
+    local warpgo_dir="${WARP_CONFIG}/warp-go"
+
+    # Get WARP config from zeroteam API or direct Cloudflare API
+    msg_info "Getting WARP config..."
+    if ! wget -q -O "${warpgo_dir}/warp.conf" \
+         "https://api.zeroteam.top/warp?format=warp-go" 2>/dev/null; then
+        msg_warn "zeroteam API unavailable — registering directly..."
+        # Direct Cloudflare API registration
+        local reg_response
+        reg_response=$(curl -s -X POST "https://api.cloudflareclient.com/v0a2223/reg" \
+            -H "CF-Client-Version: a-6.11-2223" \
+            -H "Content-Type: application/json" \
+            -d '{"key":"'$(wg genkey 2>/dev/null || openssl rand -base64 32)'","install_id":"","fcm_token":"","tos":"'$(date -u +%Y-%m-%dT%H:%M:%S.000Z)'","model":"PC","serial_number":"","locale":"en_US"}' 2>/dev/null)
+
+        if [[ -z "${reg_response}" ]]; then
+            msg_fail "Could not register with Cloudflare WARP"
+            return 1
+        fi
+
+        # Extract WireGuard config from API response
+        local private_key peer_pubkey address_v4 address_v6
+        private_key=$(echo "${reg_response}" | jq -r '.config.client_id // empty' 2>/dev/null)
+
+        # If direct API doesn't return expected format, try warp-go export
+        if [[ -z "${private_key}" ]]; then
+            msg_fail "Could not parse Cloudflare API response"
+            return 1
+        fi
+    fi
+
+    # If we got warp.conf, export WireGuard config via warp-go
+    if [[ -f "${warpgo_dir}/warp.conf" ]]; then
+        cd "${warpgo_dir}" || return 1
+        ./warp-go --config=warp.conf --export-wireguard=proxy.conf 2>&1 || true
+
+        if [[ ! -f "${warpgo_dir}/proxy.conf" ]]; then
+            msg_fail "Could not generate WireGuard profile via warp-go"
+            return 1
+        fi
+        msg_ok "WireGuard profile generated via warp-go"
+        extract_wireguard_keys "${warpgo_dir}/proxy.conf"
+        return $?
+    fi
+
+    msg_fail "No WireGuard profile generated"
+    return 1
+}
+
+# --- Extract WireGuard keys from profile ---
+extract_wireguard_keys() {
+    local profile_file="$1"
+
     local private_key address_v4 address_v6 endpoint peer_pubkey
-    private_key=$(grep "^PrivateKey" "${WARP_CONFIG}/wgcf-profile.conf" | awk '{print $3}')
-    address_v4=$(grep "^Address" "${WARP_CONFIG}/wgcf-profile.conf" | head -1 | awk '{print $3}')
-    address_v6=$(grep "^Address" "${WARP_CONFIG}/wgcf-profile.conf" | tail -1 | awk '{print $3}')
-    endpoint=$(grep "^Endpoint" "${WARP_CONFIG}/wgcf-profile.conf" | awk '{print $3}')
-    peer_pubkey=$(grep "^PublicKey" "${WARP_CONFIG}/wgcf-profile.conf" | awk '{print $3}')
+    private_key=$(grep "^PrivateKey" "${profile_file}" | awk '{print $3}')
+    address_v4=$(grep "^Address" "${profile_file}" | head -1 | awk '{print $3}')
+    address_v6=$(grep "^Address" "${profile_file}" | tail -1 | awk '{print $3}')
+    endpoint=$(grep "^Endpoint" "${profile_file}" | awk '{print $3}')
+    peer_pubkey=$(grep "^PublicKey" "${profile_file}" | awk '{print $3}')
 
     if [[ -z "${private_key}" || -z "${peer_pubkey}" ]]; then
         msg_fail "Could not extract keys from WireGuard profile"
@@ -125,7 +224,7 @@ register_warp() {
     echo "${address_v6}" > "${WARP_CONFIG}/address_v6"
     echo "${endpoint}" > "${WARP_CONFIG}/endpoint"
 
-    chmod 600 "${WARP_CONFIG}/private_key" "${WARP_CONFIG}/wgcf-account.toml"
+    chmod 600 "${WARP_CONFIG}/private_key"
 
     msg_ok "WARP keys extracted"
     msg_info "  Private key : [saved]"
