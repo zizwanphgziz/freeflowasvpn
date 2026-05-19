@@ -41,6 +41,8 @@ if [[ "$(id -u)" -ne 0 ]]; then
 fi
 
 # --- OS Check ---
+# Save SCRIPT_VERSION before sourcing /etc/os-release (which exports its own VERSION)
+SCRIPT_VERSION="${VERSION}"
 if [[ -f /etc/os-release ]]; then
     . /etc/os-release
     OS_NAME="${ID}"
@@ -161,7 +163,7 @@ source "${INSTALL_DIR}/scripts/core/common.sh"
 
 # --- Setup Directories ---
 setup_directories
-set_version "${VERSION}"
+set_version "${SCRIPT_VERSION}"
 echo "${domain}" > "${CONFIG_DIR}/domain"
 
 # Save CF mode if selected
@@ -286,7 +288,7 @@ echo -e "${CYAN}"
 echo "╔══════════════════════════════════════════════════════╗"
 echo "║                                                      ║"
 echo "║   FreeFlow ASVPN — Installation Complete!            ║"
-echo "║   Version: ${VERSION}                                     ║"
+echo "║   Version: ${SCRIPT_VERSION}                                     ║"
 echo "║                                                      ║"
 echo "╚══════════════════════════════════════════════════════╝"
 echo -e "${NC}"

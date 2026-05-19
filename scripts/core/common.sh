@@ -74,15 +74,15 @@ msg_info() {
 # --- OS Detection ---
 detect_os() {
     if [[ -f /etc/os-release ]]; then
-        . /etc/os-release
-        OS_NAME="${ID}"
-        OS_VERSION="${VERSION_ID}"
-        OS_PRETTY="${PRETTY_NAME}"
+        # Read specific fields only — sourcing the whole file overwrites
+        # the script's VERSION variable with the OS VERSION string.
+        OS_NAME=$(. /etc/os-release && echo "${ID}")
+        OS_VERSION=$(. /etc/os-release && echo "${VERSION_ID}")
+        OS_PRETTY=$(. /etc/os-release && echo "${PRETTY_NAME}")
     elif [[ -f /etc/lsb-release ]]; then
-        . /etc/lsb-release
-        OS_NAME="${DISTRIB_ID,,}"
-        OS_VERSION="${DISTRIB_RELEASE}"
-        OS_PRETTY="${DISTRIB_DESCRIPTION}"
+        OS_NAME=$(. /etc/lsb-release && echo "${DISTRIB_ID,,}")
+        OS_VERSION=$(. /etc/lsb-release && echo "${DISTRIB_RELEASE}")
+        OS_PRETTY=$(. /etc/lsb-release && echo "${DISTRIB_DESCRIPTION}")
     else
         OS_NAME="unknown"
         OS_VERSION="unknown"
