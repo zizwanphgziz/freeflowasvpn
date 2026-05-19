@@ -79,7 +79,7 @@ main_menu() {
         echo -e " ${GREEN}[ 06 ]${NC} CHANGE DNS SERVER      ${GREEN}[ 12 ]${NC} STREAM GEO LOCATION"
         echo -e " ${GREEN}[ 07 ]${NC} RESTART ALL SERVICE    ${GREEN}[ 13 ]${NC} SERVICE/PORT INFO"
         echo -e " ${GREEN}[ 08 ]${NC} CHECK RAM USAGE        ${GREEN}[ 14 ]${NC} SERVICE STATUS"
-        echo -e " ${GREEN}[ 09 ]${NC} REBOOT VPS             ${GREEN}[ 15 ]${NC} SOCKS WARP"
+        echo -e " ${GREEN}[ 09 ]${NC} REBOOT VPS             ${GREEN}[ 15 ]${NC} WARP CLOUDFLARE"
         echo -e " ${GREEN}[ 10 ]${NC} UPDATE SCRIPT          ${GREEN}[ 16 ]${NC} ADS BLOCKER"
         echo -e "                                ${GREEN}[ 17 ]${NC} DIAGNOSE CONNECTION"
         echo -e "$L"
@@ -307,38 +307,26 @@ menu_warp() {
         clear
         local warp_st
         if [[ -f "${CONFIG_DIR}/modules/warp_installed" ]]; then
-            # Check if WARP is actually running
-            local warp_method
-            warp_method=$(cat "${CONFIG_DIR}/warp/method" 2>/dev/null)
-            if [[ "${warp_method}" == "warp-cli" ]]; then
-                if warp-cli status 2>/dev/null | grep -qi "connected"; then
-                    warp_st="${GREEN}ON${NC}"
-                else
-                    warp_st="${YELLOW}INSTALLED${NC}"
-                fi
-            elif [[ "${warp_method}" == "wireguard" ]]; then
-                if ip link show warp &>/dev/null; then
-                    warp_st="${GREEN}ON${NC}"
-                else
-                    warp_st="${YELLOW}INSTALLED${NC}"
-                fi
-            else
+            # Check if Xray has WireGuard WARP outbound
+            if jq -e '.outbounds[] | select(.tag == "warp" and .protocol == "wireguard")' "${XRAY_CONFIG}" &>/dev/null; then
                 warp_st="${GREEN}ON${NC}"
+            else
+                warp_st="${YELLOW}INSTALLED${NC}"
             fi
         else
             warp_st="${RED}OFF${NC}"
         fi
 
         echo -e "$L"
-        echo -e "           ${BOLD}${YELLOW}↙ SOCKS WARP MENU ↘${NC}"
+        echo -e "           ${BOLD}${YELLOW}↙ WARP MENU ↘${NC}"
         echo -e "$L"
-        echo -e " WARP SOCKS STATUS : ${warp_st}"
+        echo -e " WARP STATUS : ${warp_st}"
         echo -e "$L"
-        echo -e " ${GREEN}[ 01 ]${NC} INSTALL SOCKS WARP"
+        echo -e " ${GREEN}[ 01 ]${NC} INSTALL WARP"
         echo -e " ${GREEN}[ 02 ]${NC} LIST DOMAIN"
         echo -e " ${GREEN}[ 03 ]${NC} ADD DOMAIN"
         echo -e " ${GREEN}[ 04 ]${NC} DELETE DOMAIN"
-        echo -e " ${GREEN}[ 05 ]${NC} UNINSTALL SOCKS WARP"
+        echo -e " ${GREEN}[ 05 ]${NC} UNINSTALL WARP"
         echo -e "$L"
         echo -e " ${RED}[  0 ]${NC} EXIT TO MENU"
         echo -e "$L"

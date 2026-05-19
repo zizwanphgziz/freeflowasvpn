@@ -342,37 +342,31 @@ echo -e "${BOLD}[12] WARP Status${NC}"
 if [[ -f "${CONFIG_DIR}/modules/warp_installed" ]]; then
     warp_method=$(cat "${CONFIG_DIR}/warp/method" 2>/dev/null || echo "unknown")
     info "WARP method: ${warp_method}"
-    if [[ "${warp_method}" == "warp-cli" ]]; then
-        warp_status=$(warp-cli status 2>/dev/null || echo "warp-cli not available")
-        if echo "${warp_status}" | grep -qi "connected"; then
-            ok "WARP: connected (warp-cli)"
-        else
-            warn "WARP: not connected — ${warp_status}"
-            info "Try: warp-cli connect"
-        fi
-        if ss -tlnp 2>/dev/null | grep -q ":40000 "; then
-            ok "WARP SOCKS5 proxy: listening on port 40000"
-        else
-            warn "WARP SOCKS5 proxy: NOT listening on port 40000"
-        fi
-    elif [[ "${warp_method}" == "wireguard" ]]; then
-        if ip link show warp &>/dev/null; then
-            ok "WARP WireGuard interface: UP"
-        else
-            warn "WARP WireGuard interface: DOWN"
-            info "Try: wg-quick up warp"
-        fi
-    fi
-    # Check Xray WARP outbound
-    if [[ -f "${XRAY_CONFIG}" ]] && jq -e '.outbounds[] | select(.tag=="warp")' "${XRAY_CONFIG}" &>/dev/null; then
-        ok "Xray WARP outbound: configured"
+    # Check Xray WARP outbound (native WireGuard)
+    if [[ -f "${XRAY_CONFIG}" ]] && jq -e '.outbounds[] | select(.tag=="warp" and .protocol=="wireguard")' "${XRAY_CONFIG}" &>/dev/null; then
+        ok "Xray WARP outbound: configured (native WireGuard)"
+    elif [[ -f "${XRAY_CONFIG}" ]] && jq -e '.outbounds[] | select(.tag=="warp")' "${XRAY_CONFIG}" &>/dev/null; then
+        warn "Xray WARP outbound: configured (legacy method)"
     else
         warn "Xray WARP outbound: NOT configured"
+    fi
+    # Check domainStrategy
+    dom_strat=$(jq -r '.routing.domainStrategy // "not set"' "${XRAY_CONFIG}" 2>/dev/null)
+    if [[ "${dom_strat}" == "IPOnDemand" ]]; then
+        ok "Routing domainStrategy: ${dom_strat}"
+    else
+        warn "Routing domainStrategy: ${dom_strat} (should be IPOnDemand for WARP)"
     fi
     # Check WARP routed domains
     if [[ -f "${CONFIG_DIR}/warp/domains" && -s "${CONFIG_DIR}/warp/domains" ]]; then
         warp_domains=$(wc -l < "${CONFIG_DIR}/warp/domains")
         info "WARP routed domains: ${warp_domains}"
+        # Check domain format in Xray routing
+        if jq -e '.routing.rules[] | select(.outboundTag=="warp") | .domain[] | select(startswith("domain:"))' "${XRAY_CONFIG}" &>/dev/null; then
+            ok "Domain routing format: correct (domain: prefix)"
+        else
+            warn "Domain routing format: may be incorrect (missing domain: prefix)"
+        fi
     else
         info "WARP routed domains: none"
     fi
