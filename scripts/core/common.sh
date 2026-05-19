@@ -6,8 +6,9 @@
 # --- Repository Info ---
 REPO_OWNER="zizwanphgziz"
 REPO_NAME="freeflowasvpn"
+REPO_BRANCH="init-branch"
 REPO_URL="https://github.com/${REPO_OWNER}/${REPO_NAME}"
-REPO_RAW="https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/main"
+REPO_RAW="https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/${REPO_BRANCH}"
 VERSION_FILE="/etc/freeflow/version"
 CONFIG_DIR="/etc/freeflow"
 DATA_DIR="/etc/freeflow/data"
@@ -94,31 +95,19 @@ check_os_support() {
     detect_os
     case "${OS_NAME}" in
         ubuntu)
-            case "${OS_VERSION}" in
-                18.04|20.04|22.04|24.04) return 0 ;;
-                *)
-                    local major="${OS_VERSION%%.*}"
-                    if [[ "$major" -ge 18 ]]; then
-                        msg_warn "Ubuntu ${OS_VERSION} not officially tested but should work"
-                        return 0
-                    fi
-                    ;;
-            esac
+            local major="${OS_VERSION%%.*}"
+            if [[ "$major" -ge 18 ]]; then
+                return 0
+            fi
             ;;
         debian)
-            case "${OS_VERSION}" in
-                9|10|11|12) return 0 ;;
-                *)
-                    if [[ "${OS_VERSION}" -ge 9 ]] 2>/dev/null; then
-                        msg_warn "Debian ${OS_VERSION} not officially tested but should work"
-                        return 0
-                    fi
-                    ;;
-            esac
+            if [[ "${OS_VERSION}" -ge 9 ]] 2>/dev/null; then
+                return 0
+            fi
             ;;
     esac
     msg_fail "Unsupported OS: ${OS_PRETTY}"
-    msg_info "Supported: Ubuntu 18.04+, Debian 9+"
+    msg_info "Supported: Ubuntu 18.04-26.04, Debian 9-13"
     return 1
 }
 
@@ -148,7 +137,7 @@ check_arch() {
 
 # --- UUID Functions ---
 generate_uuid() {
-    cat /proc/sys/kernel/random/uuid
+    cat /proc/sys/kernel/random/uuid 2>/dev/null | tr -d '[:cntrl:]' || uuidgen 2>/dev/null || openssl rand -hex 16 | sed 's/^\(.\{8\}\)\(.\{4\}\)\(.\{4\}\)\(.\{4\}\)\(.\{12\}\)/\1-\2-\3-\4-\5/'
 }
 
 custom_uuid_from_name() {
@@ -215,6 +204,10 @@ setup_directories() {
     mkdir -p "${DATA_DIR}"
     mkdir -p "${USER_DB}/vless/active"
     mkdir -p "${USER_DB}/vless/expired"
+    mkdir -p "${USER_DB}/vmess/active"
+    mkdir -p "${USER_DB}/vmess/expired"
+    mkdir -p "${USER_DB}/trojan/active"
+    mkdir -p "${USER_DB}/trojan/expired"
     mkdir -p "${USER_DB}/ssh/active"
     mkdir -p "${USER_DB}/ssh/expired"
     mkdir -p "${DATA_DIR}/usage"
