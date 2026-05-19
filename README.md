@@ -39,7 +39,7 @@ Nginx handles all public ports and SSL termination. Xray runs on internal localh
 
 ### Modules
 - **SSH WebSocket**: Optional install/uninstall
-- **WARP Cloudflare**: Bypass domains via Cloudflare's network — install/uninstall
+- **WARP Cloudflare**: Domain bypass via Xray native WireGuard (wgcf) — no external daemon needed
 - **Ads Blocker**: DNS-level ad blocking — install/uninstall
 
 ### User Management

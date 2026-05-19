@@ -266,7 +266,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "ram": "bash /usr/local/lib/freeflow/scripts/tools/ram_monitor.sh",
         "netflix": "bash /usr/local/lib/freeflow/scripts/tools/netflix_checker.sh",
         "check_update": "bash /usr/local/lib/freeflow/scripts/update/auto_update.sh check",
-        "warp_status": "warp-cli status 2>/dev/null || systemctl is-active wg-quick@warp 2>/dev/null || echo 'WARP not installed'",
+        "warp_status": "bash /usr/local/lib/freeflow/scripts/warp/install_warp.sh status 2>/dev/null; if [ -f /etc/freeflow/warp/domains ]; then echo 'Routed domains:'; cat /etc/freeflow/warp/domains; else echo 'No domains routed'; fi",
         "xray_logs": "tail -20 /var/log/xray/access.log 2>/dev/null || echo 'No logs'",
         "tg_backup": "bash /usr/local/lib/freeflow/scripts/tools/tg_auto_backup.sh send",
     }

@@ -249,7 +249,35 @@ Rewrite `install_warp.sh` to use **Xray native WireGuard outbound** via `wgcf`:
 4. Domain routing with `"domain:"` prefix + `"domainStrategy": "IPOnDemand"`
 5. Keep same menu interface
 
-### Status: Research complete, awaiting Ahmad's approval before implementing
+### Status: Research complete — IMPLEMENTED in Phase 18
+
+## Phase 18: v2.4.0 — WARP Architecture Rewrite — DONE
+- [x] **Complete rewrite** of `install_warp.sh` — removed warp-cli/SOCKS5, replaced with Xray native WireGuard
+- [x] **wgcf integration** — downloads wgcf binary, registers with Cloudflare WARP, generates WireGuard keys
+- [x] **Xray `protocol: "wireguard"` outbound** — no external daemon needed (no warp-svc, no wg-quick)
+- [x] **`domainStrategy: "IPOnDemand"`** — added to routing config for proper domain resolution
+- [x] **Domain routing format** — uses `"domain:example.com"` prefix for proper subdomain matching
+- [x] **WARP rules prepended** — specific WARP rules placed before catch-all rules (per XTLS guidance)
+- [x] **`kernelMode: false`** — uses userspace WireGuard (no kernel module needed)
+- [x] **Menu updated** — WARP status checks Xray WireGuard outbound directly (no warp-cli dependency)
+- [x] **Diagnostic updated** — checks native WireGuard outbound, domainStrategy, domain format
+- [x] **Telegram bot updated** — WARP status command uses new method
+- [x] **Uninstall cleanup** — removes wgcf, config, Xray outbound+routing in one operation
+- [x] **README updated** — reflects all current features (v2.4.0)
+- [x] **Version bumped** to 2.4.0
+- [x] PR #11 closed (superseded by this rewrite)
+- [x] `init-branch` merged to `main`
+
+### Architecture Change
+| Before (v2.3.x) | After (v2.4.0) |
+|------------------|----------------|
+| warp-cli SOCKS5 proxy (port 40000) | Xray native `protocol: "wireguard"` |
+| External daemon required (warp-svc) | No external daemon (Xray handles WireGuard) |
+| cloudflare-warp package dependency | `wgcf` binary (~5MB Go binary) |
+| Plain domain format: `"ecoss.kpdn.gov.my"` | Prefix format: `"domain:kpdn.gov.my"` |
+| No domainStrategy | `"domainStrategy": "IPOnDemand"` |
+| WARP rules appended (wrong order) | WARP rules prepended (correct order) |
+| sendThrough for WireGuard fallback | Native WireGuard in Xray-core |
 
 ## Changelog
 | Date | Change |
@@ -290,3 +318,8 @@ Rewrite `install_warp.sh` to use **Xray native WireGuard outbound** via `wgcf`:
 | 2026-05-18 | WARP research: Analyzed 5 reference implementations (fscarmen, marz-warp, hamid-gh98, Remnawave, XTLS) |
 | 2026-05-18 | WARP research: Our approach (warp-cli SOCKS5) differs from standard (Xray native WireGuard via wgcf) |
 | 2026-05-18 | WARP research: Proposed rewrite using Xray protocol:"wireguard" + wgcf — awaiting approval |
+| 2026-05-19 | v2.4.0: WARP architecture rewrite — Xray native WireGuard via wgcf (no external daemon) |
+| 2026-05-19 | v2.4.0: Domain routing uses "domain:" prefix + domainStrategy IPOnDemand |
+| 2026-05-19 | v2.4.0: Diagnostic, menu, Telegram bot updated for new WARP method |
+| 2026-05-19 | v2.4.0: README updated with all current features |
+| 2026-05-19 | v2.4.0: PR #11 closed, init-branch merged to main |
