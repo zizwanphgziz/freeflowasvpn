@@ -47,15 +47,36 @@ register_warp() {
     mkdir -p "${WARP_CONFIG}"
     cd "${WARP_CONFIG}" || return 1
 
-    # Register new account
-    if ! wgcf register --accept-tos 2>/dev/null; then
-        msg_fail "WARP registration failed"
+    # Remove stale account/profile files so wgcf starts fresh
+    rm -f "${WARP_CONFIG}/wgcf-account.toml" "${WARP_CONFIG}/wgcf-profile.conf"
+
+    # Register new account (retry up to 3 times — Cloudflare API may
+    # return 500 on the first attempt yet still create the account file)
+    local attempt
+    for attempt in 1 2 3; do
+        wgcf register --accept-tos 2>&1 || true
+
+        if [[ -f "${WARP_CONFIG}/wgcf-account.toml" ]]; then
+            msg_ok "WARP account registered (attempt ${attempt})"
+            break
+        fi
+
+        if [[ "${attempt}" -lt 3 ]]; then
+            msg_warn "Registration attempt ${attempt} failed — retrying in 3s..."
+            sleep 3
+        fi
+    done
+
+    if [[ ! -f "${WARP_CONFIG}/wgcf-account.toml" ]]; then
+        msg_fail "WARP registration failed after 3 attempts"
+        msg_info "This may be a Cloudflare API issue — try again later"
         return 1
     fi
-    msg_ok "WARP account registered"
 
     # Generate WireGuard profile
-    if ! wgcf generate 2>/dev/null; then
+    wgcf generate 2>&1 || true
+
+    if [[ ! -f "${WARP_CONFIG}/wgcf-profile.conf" ]]; then
         msg_fail "Could not generate WireGuard profile"
         return 1
     fi
@@ -271,31 +292,36 @@ add_warp_route() {
 
 # --- Delete a WARP route ---
 delete_warp_route() {
-    print_section "Delete WARP Route"
+    print_section "Remove WARP Domain Route"
 
     if [[ ! -f "${WARP_CONFIG}/domains" || ! -s "${WARP_CONFIG}/domains" ]]; then
-        msg_info "No WARP routes configured"
+        msg_info "No domains configured"
         return 0
     fi
 
-    echo -e " Current WARP routed domains:"
     echo ""
     cat -n "${WARP_CONFIG}/domains"
     echo ""
 
-    read -rp " Enter line number to delete (0 = cancel): " line_num
-    [[ -z "${line_num}" || "${line_num}" -eq 0 ]] && return 0
+    read -rp " Enter line number to remove (0 = cancel): " line_num
+
+    if [[ ! "${line_num}" =~ ^[0-9]+$ ]]; then
+        msg_fail "Invalid input"
+        return 1
+    fi
+    [[ "${line_num}" -eq 0 ]] && return 0
 
     local total
     total=$(wc -l < "${WARP_CONFIG}/domains")
     if [[ "${line_num}" -gt "${total}" || "${line_num}" -lt 1 ]]; then
-        msg_warn "Invalid line number"
+        msg_fail "Invalid line number (1-${total})"
         return 1
     fi
 
     local removed
     removed=$(sed -n "${line_num}p" "${WARP_CONFIG}/domains")
     sed -i "${line_num}d" "${WARP_CONFIG}/domains"
+    sort -u "${WARP_CONFIG}/domains" -o "${WARP_CONFIG}/domains"
 
     # Rebuild Xray routing rules from remaining domains
     if [[ -s "${WARP_CONFIG}/domains" ]]; then
@@ -320,6 +346,7 @@ delete_warp_route() {
         if [[ -s "${tmp_config}" ]]; then
             mv "${tmp_config}" "${XRAY_CONFIG}"
             restart_service xray
+            msg_ok "Removed '${removed}' — routing updated"
         else
             rm -f "${tmp_config}"
         fi
@@ -331,13 +358,12 @@ delete_warp_route() {
             "${XRAY_CONFIG}" > "${tmp_config}"
         if [[ -s "${tmp_config}" ]]; then
             mv "${tmp_config}" "${XRAY_CONFIG}"
-            restart_service xray
         else
             rm -f "${tmp_config}"
         fi
+        restart_service xray
+        msg_ok "Removed '${removed}' — all WARP routes cleared"
     fi
-
-    msg_ok "Removed WARP route: ${removed}"
 }
 
 # --- List WARP routes ---
