@@ -29,11 +29,31 @@ install_wgcf() {
         *) msg_fail "Unsupported architecture: ${arch}"; return 1 ;;
     esac
 
-    local wgcf_url="https://github.com/ViRb3/wgcf/releases/latest/download/wgcf_linux_${wgcf_arch}"
+    # Get latest release tag (e.g. "v2.2.30") via GitHub API redirect
+    local wgcf_tag
+    wgcf_tag=$(curl -sI "https://github.com/ViRb3/wgcf/releases/latest" \
+               | grep -i '^location:' | sed 's|.*/tag/||;s/[[:space:]]//g')
+
+    if [[ -z "${wgcf_tag}" ]]; then
+        msg_warn "Could not detect latest wgcf version, using v2.2.30"
+        wgcf_tag="v2.2.30"
+    fi
+
+    # Asset names are: wgcf_<version_without_v>_linux_<arch>
+    local wgcf_ver="${wgcf_tag#v}"
+    local wgcf_url="https://github.com/ViRb3/wgcf/releases/download/${wgcf_tag}/wgcf_${wgcf_ver}_linux_${wgcf_arch}"
+
+    msg_info "Downloading wgcf ${wgcf_tag}..."
     if wget -q -O /usr/local/bin/wgcf "${wgcf_url}" 2>/dev/null || \
        curl -sL -o /usr/local/bin/wgcf "${wgcf_url}" 2>/dev/null; then
         chmod +x /usr/local/bin/wgcf
-        msg_ok "wgcf installed"
+        # Verify it's a real binary, not an HTML error page
+        if ! wgcf --version &>/dev/null; then
+            rm -f /usr/local/bin/wgcf
+            msg_fail "Downloaded file is not a valid wgcf binary"
+            return 1
+        fi
+        msg_ok "wgcf ${wgcf_tag} installed"
     else
         msg_fail "Could not download wgcf"
         return 1
