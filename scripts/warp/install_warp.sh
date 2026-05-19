@@ -13,10 +13,13 @@ WARP_CONFIG="${CONFIG_DIR}/warp"
 
 # --- Install wgcf binary ---
 install_wgcf() {
-    if command -v wgcf &>/dev/null; then
-        msg_ok "wgcf already installed"
+    if command -v wgcf &>/dev/null && wgcf --version &>/dev/null; then
+        msg_ok "wgcf already installed ($(wgcf --version 2>/dev/null | head -1))"
         return 0
     fi
+
+    # Remove broken binary if it exists but doesn't execute
+    rm -f /usr/local/bin/wgcf 2>/dev/null
 
     msg_info "Downloading wgcf..."
     local arch
