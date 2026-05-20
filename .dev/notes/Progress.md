@@ -323,3 +323,50 @@ Rewrite `install_warp.sh` to use **Xray native WireGuard outbound** via `wgcf`:
 | 2026-05-19 | v2.4.0: Diagnostic, menu, Telegram bot updated for new WARP method |
 | 2026-05-19 | v2.4.0: README updated with all current features |
 | 2026-05-19 | v2.4.0: PR #11 closed, init-branch merged to main |
+| 2026-05-19 | v2.4.0: PR #13 (WARP rewrite) merged, PR #14/15 (merge to default branch) merged |
+| 2026-05-19 | v2.4.0: WARP registration failed on VPS — wgcf API 500 errors |
+| 2026-05-19 | v2.4.0: PR #16 — WARP registration retry logic + delete_warp_route improvements |
+| 2026-05-19 | v2.4.0: PR #17 — setup.sh VERSION bump (was still 2.3.2) |
+| 2026-05-19 | v2.4.0: PR #18 — VERSION namespace collision fix (/etc/os-release overwrites script VERSION) |
+| 2026-05-19 | v2.4.1: PR #19 — wgcf download URL fix (asset names include version number) |
+| 2026-05-19 | v2.4.1: PR #20 — bump to v2.4.1 + validate existing wgcf binary works |
+| 2026-05-19 | v2.4.2: PR #21 — wgcf validation fix (--help not --version) + warp-go fallback |
+| 2026-05-20 | v2.4.3: PR #22 — trailing comma in WARP addresses crashed Xray (172.16.0.2/32,) |
+| 2026-05-20 | v2.4.3: WARP installs, diagnostics green, but domain bypass still not working |
+| 2026-05-20 | v2.5.0: PR #23 — WARP rewrite to WireProxy SOCKS5 (fscarmen failed wireproxy download) |
+| 2026-05-20 | v2.5.1: PR #24 — Self-contained wireproxy + wgcf direct (domain bypass didn't work) |
+| 2026-05-20 | v2.5.2: PR #25 — Direct Cloudflare API + wireproxy (domain bypass didn't work) |
+| 2026-05-21 | v2.5.3: PR #26 — gh98 WARP installer + pre-install wireproxy (WORKS but detection timing issue) |
+| 2026-05-21 | v2.5.4: PR #27 — Fix wireproxy detection: remove pre-install, retry loop |
+
+## Phase 19: v2.4.x — WARP Bug Fixes — DONE
+- [x] PR #16: Registration retry logic (wgcf API 500 errors)
+- [x] PR #17: setup.sh VERSION bump (was still 2.3.2)
+- [x] PR #18: VERSION namespace collision fix (/etc/os-release overwrites script's VERSION)
+- [x] PR #19: wgcf download URL fix (asset names include version number)
+- [x] PR #20: Bump v2.4.1 + validate wgcf binary
+- [x] PR #21: wgcf validation fix (--help not --version) + warp-go fallback
+- [x] PR #22: Trailing comma in WARP addresses crashed Xray
+
+## Phase 20: v2.5.x — WARP Architecture Pivot to WireProxy SOCKS5 — IN PROGRESS
+
+### Problem
+Xray native WireGuard via wgcf installs and shows all green, but domain bypass does NOT work.
+User confirmed JinGGo's warp-go + wireproxy SOCKS5 approach works on their main VPS.
+
+### Architecture
+```
+Xray → socks5://127.0.0.1:40000 → WireProxy → Cloudflare WARP
+```
+
+### Attempts
+1. v2.5.0 (PR #23): fscarmen/warp `warp w` — wireproxy download failed (packagecloud.io)
+2. v2.5.1 (PR #24): Self-contained wireproxy + wgcf — domain bypass didn't work
+3. v2.5.2 (PR #25): Direct Cloudflare API + wireproxy — domain bypass didn't work
+4. v2.5.3 (PR #26): gh98 script + pre-install wireproxy — WORKS but timing issue
+5. v2.5.4 (PR #27): Fix: remove pre-install, better detection retry — PENDING
+
+### Current Issue (v2.5.3)
+Pre-installed wireproxy binary causes gh98 to see WP_STATUS=1 (installed but not running),
+triggering reinstall path (warp u → warp w). After gh98, sleep 2 not enough for detection.
+User has to manually run `warp w` again for WARP to show as ON.

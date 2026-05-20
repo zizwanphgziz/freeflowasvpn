@@ -13,7 +13,7 @@ REPO_NAME="freeflowasvpn"
 REPO_URL="https://github.com/${REPO_OWNER}/${REPO_NAME}"
 REPO_BRANCH="init-branch"
 INSTALL_DIR="/usr/local/lib/freeflow"
-VERSION="2.5.3"
+VERSION="2.5.4"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
