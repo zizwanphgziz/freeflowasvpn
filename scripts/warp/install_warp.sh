@@ -2,9 +2,8 @@
 # ============================================================
 # FreeFlow ASVPN - WARP Cloudflare Module (Install/Uninstall)
 # Uses hamid-gh98/x-ui-scripts WARP installer (fscarmen/warp).
-# Pre-installs wireproxy from GitHub to avoid packagecloud.io
-# download failures, then lets gh98 handle WARP registration
-# and wireproxy configuration.
+# gh98 handles wireproxy download, WARP registration, and
+# wireproxy configuration. No pre-install needed.
 # ============================================================
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -16,46 +15,6 @@ WARP_SOCKS_ADDR="127.0.0.1"
 WIREPROXY_BIN="/usr/local/bin/wireproxy"
 
 GH98_SCRIPT_URL="https://raw.githubusercontent.com/hamid-gh98/x-ui-scripts/main/install_warp_proxy.sh"
-
-# --- Pre-install wireproxy binary from GitHub ---
-install_wireproxy_bin() {
-    if command -v wireproxy &>/dev/null; then
-        msg_ok "wireproxy binary already installed"
-        return 0
-    fi
-
-    msg_info "Pre-installing wireproxy from GitHub..."
-    local arch
-    arch=$(uname -m)
-    local wp_arch
-    case "${arch}" in
-        x86_64|amd64) wp_arch="amd64" ;;
-        aarch64|arm64) wp_arch="arm64" ;;
-        armv7l) wp_arch="arm" ;;
-        i686|i386) wp_arch="386" ;;
-        *) msg_fail "Unsupported architecture: ${arch}"; return 1 ;;
-    esac
-
-    local wp_url="https://github.com/pufferffish/wireproxy/releases/latest/download/wireproxy_linux_${wp_arch}.tar.gz"
-
-    local tmp_dir
-    tmp_dir=$(mktemp -d)
-    if wget -q -O "${tmp_dir}/wireproxy.tar.gz" "${wp_url}" 2>/dev/null || \
-       curl -sL -o "${tmp_dir}/wireproxy.tar.gz" "${wp_url}" 2>/dev/null; then
-        tar -xzf "${tmp_dir}/wireproxy.tar.gz" -C "${tmp_dir}" 2>/dev/null
-        if [[ -f "${tmp_dir}/wireproxy" ]]; then
-            mv "${tmp_dir}/wireproxy" "${WIREPROXY_BIN}"
-            chmod +x "${WIREPROXY_BIN}"
-            rm -rf "${tmp_dir}"
-            msg_ok "wireproxy binary installed from GitHub"
-            return 0
-        fi
-    fi
-
-    rm -rf "${tmp_dir}"
-    msg_fail "Could not download wireproxy from GitHub"
-    return 1
-}
 
 # --- Run gh98 WARP installer ---
 run_gh98_warp_install() {
@@ -82,29 +41,30 @@ run_gh98_warp_install() {
         return 1
     fi
 
-    # Verify wireproxy is running
-    sleep 2
-    if ss -nltp 2>/dev/null | grep -q wireproxy; then
-        local running_port
-        running_port=$(ss -nltp 2>/dev/null | grep wireproxy | awk '{print $(NF-2)}' | head -1 | cut -d: -f2)
-        WARP_SOCKS_PORT="${running_port:-40000}"
-        msg_ok "WireProxy running on socks5://${WARP_SOCKS_ADDR}:${WARP_SOCKS_PORT}"
-        return 0
-    fi
+    # Wait for wireproxy to be running (retry loop — it needs time to start)
+    local max_attempts=6
+    local attempt=0
+    while [[ ${attempt} -lt ${max_attempts} ]]; do
+        attempt=$((attempt + 1))
+        msg_info "Checking wireproxy status (attempt ${attempt}/${max_attempts})..."
+        sleep 5
 
-    # Try starting wireproxy if service exists but not running
-    if systemctl start wireproxy 2>/dev/null; then
-        sleep 2
         if ss -nltp 2>/dev/null | grep -q wireproxy; then
             local running_port
             running_port=$(ss -nltp 2>/dev/null | grep wireproxy | awk '{print $(NF-2)}' | head -1 | cut -d: -f2)
             WARP_SOCKS_PORT="${running_port:-40000}"
-            msg_ok "WireProxy started on socks5://${WARP_SOCKS_ADDR}:${WARP_SOCKS_PORT}"
+            msg_ok "WireProxy running on socks5://${WARP_SOCKS_ADDR}:${WARP_SOCKS_PORT}"
             return 0
         fi
-    fi
 
-    msg_fail "WireProxy failed to start after gh98 installation"
+        # Try starting wireproxy service if it exists but isn't running yet
+        if [[ ${attempt} -ge 2 ]] && systemctl is-enabled wireproxy &>/dev/null; then
+            msg_info "Attempting to start wireproxy service..."
+            systemctl restart wireproxy 2>/dev/null || true
+        fi
+    done
+
+    msg_fail "WireProxy failed to start after ${max_attempts} attempts"
     msg_info "Try manually: warp w"
     return 1
 }
@@ -181,17 +141,12 @@ install_warp() {
     msg_info "Using hamid-gh98 WARP installer (fscarmen/warp)"
     echo ""
 
-    # Step 1: Pre-install wireproxy binary from GitHub
-    if ! install_wireproxy_bin; then
-        return 1
-    fi
-
-    # Step 2: Run gh98 WARP installer (handles registration + config)
+    # Step 1: Run gh98 WARP installer (handles wireproxy + registration + config)
     if ! run_gh98_warp_install; then
         return 1
     fi
 
-    # Step 3: Configure Xray SOCKS outbound
+    # Step 2: Configure Xray SOCKS outbound
     if ! configure_xray_warp; then
         return 1
     fi
@@ -386,7 +341,7 @@ uninstall_warp() {
     fi
 
     # Remove wireproxy binary and leftover files
-    rm -f "${WIREPROXY_BIN}"
+    rm -f "${WIREPROXY_BIN}" /usr/bin/wireproxy
     rm -f /etc/systemd/system/wireproxy.service
     rm -f /usr/bin/warp
     rm -rf /etc/wireguard
