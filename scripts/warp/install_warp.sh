@@ -1,8 +1,9 @@
 #!/bin/bash
 # ============================================================
 # FreeFlow ASVPN - WARP Cloudflare Module (Install/Uninstall)
-# Self-contained: downloads wireproxy + wgcf, registers WARP,
-# creates SOCKS5 proxy on 127.0.0.1:40000, configures Xray.
+# Self-contained: registers directly with Cloudflare API,
+# downloads wireproxy from GitHub, creates SOCKS5 proxy on
+# 127.0.0.1:40000, configures Xray outbound.
 # Architecture from hamid-gh98/x-ui-scripts & JinGGoVPN.
 # ============================================================
 
@@ -15,14 +16,15 @@ WARP_SOCKS_ADDR="127.0.0.1"
 WIREPROXY_BIN="/usr/local/bin/wireproxy"
 WIREPROXY_CONF="/etc/wireproxy.conf"
 
+CF_API="https://api.cloudflareclient.com/v0a2223"
+CF_CLIENT_VER="a-6.11-2223"
+
 # --- Download wireproxy binary from GitHub ---
 install_wireproxy_bin() {
-    if [[ -x "${WIREPROXY_BIN}" ]] && "${WIREPROXY_BIN}" --version &>/dev/null; then
+    if [[ -x "${WIREPROXY_BIN}" ]]; then
         msg_ok "wireproxy binary already installed"
         return 0
     fi
-
-    rm -f "${WIREPROXY_BIN}" 2>/dev/null
 
     msg_info "Downloading wireproxy..."
     local arch
@@ -36,7 +38,6 @@ install_wireproxy_bin() {
         *) msg_fail "Unsupported architecture: ${arch}"; return 1 ;;
     esac
 
-    # wireproxy repo was transferred from pufferffish to windtf
     local wp_url="https://github.com/pufferffish/wireproxy/releases/latest/download/wireproxy_linux_${wp_arch}.tar.gz"
 
     local tmp_dir
@@ -58,116 +59,104 @@ install_wireproxy_bin() {
     return 1
 }
 
-# --- Install wgcf binary ---
-install_wgcf() {
-    if command -v wgcf &>/dev/null && wgcf --help &>/dev/null; then
-        msg_ok "wgcf already installed"
-        return 0
-    fi
-
-    rm -f /usr/local/bin/wgcf 2>/dev/null
-
-    msg_info "Downloading wgcf..."
-    local arch
-    arch=$(uname -m)
-    local wgcf_arch
-    case "${arch}" in
-        x86_64|amd64) wgcf_arch="amd64" ;;
-        aarch64|arm64) wgcf_arch="arm64" ;;
-        armv7l) wgcf_arch="armv7" ;;
-        *) msg_fail "Unsupported architecture: ${arch}"; return 1 ;;
-    esac
-
-    local wgcf_tag
-    wgcf_tag=$(curl -sI "https://github.com/ViRb3/wgcf/releases/latest" \
-               | grep -i '^location:' | sed 's|.*/tag/||;s/[[:space:]]//g')
-    [[ -z "${wgcf_tag}" ]] && wgcf_tag="v2.2.30"
-
-    local wgcf_ver="${wgcf_tag#v}"
-    local wgcf_url="https://github.com/ViRb3/wgcf/releases/download/${wgcf_tag}/wgcf_${wgcf_ver}_linux_${wgcf_arch}"
-
-    if wget -q -O /usr/local/bin/wgcf "${wgcf_url}" 2>/dev/null || \
-       curl -sL -o /usr/local/bin/wgcf "${wgcf_url}" 2>/dev/null; then
-        chmod +x /usr/local/bin/wgcf
-        if ! wgcf --help &>/dev/null; then
-            rm -f /usr/local/bin/wgcf
-            msg_fail "Downloaded wgcf is not a valid binary"
-            return 1
-        fi
-        msg_ok "wgcf ${wgcf_tag} installed"
-    else
-        msg_fail "Could not download wgcf"
-        return 1
-    fi
-}
-
-# --- Register WARP and generate WireGuard profile ---
+# --- Register with Cloudflare WARP API directly ---
 register_warp() {
     msg_info "Registering with Cloudflare WARP..."
 
     mkdir -p "${WARP_CONFIG}"
-    cd "${WARP_CONFIG}" || return 1
 
-    rm -f "${WARP_CONFIG}/wgcf-account.toml" "${WARP_CONFIG}/wgcf-profile.conf"
+    # Generate a random key for registration
+    local reg_key
+    reg_key=$(openssl rand -base64 32)
 
+    local reg_response
     local attempt
     for attempt in 1 2 3; do
-        wgcf register --accept-tos 2>&1 || true
-        if [[ -f "${WARP_CONFIG}/wgcf-account.toml" ]]; then
-            msg_ok "WARP account registered (attempt ${attempt})"
+        reg_response=$(curl -s -X POST "${CF_API}/reg" \
+            -H "CF-Client-Version: ${CF_CLIENT_VER}" \
+            -H "Content-Type: application/json" \
+            -d '{
+                "key": "'"${reg_key}"'",
+                "install_id": "",
+                "fcm_token": "",
+                "tos": "'"$(date -u +%Y-%m-%dT%H:%M:%S.000Z)"'",
+                "model": "PC",
+                "serial_number": "",
+                "locale": "en_US"
+            }' 2>/dev/null)
+
+        # Check if response has the config we need
+        if echo "${reg_response}" | jq -e '.config.peers[0].public_key' &>/dev/null; then
+            msg_ok "WARP registered (attempt ${attempt})"
             break
         fi
+
         if [[ "${attempt}" -lt 3 ]]; then
             msg_warn "Registration attempt ${attempt} failed — retrying in 3s..."
             sleep 3
         fi
     done
 
-    if [[ ! -f "${WARP_CONFIG}/wgcf-account.toml" ]]; then
-        msg_fail "WARP registration failed after 3 attempts"
+    # Extract WireGuard config from API response
+    local private_key peer_pubkey endpoint address_v4 address_v6 client_id
+    private_key=$(echo "${reg_response}" | jq -r '.key // empty')
+    peer_pubkey=$(echo "${reg_response}" | jq -r '.config.peers[0].public_key // empty')
+    endpoint=$(echo "${reg_response}" | jq -r '.config.peers[0].endpoint.host // empty')
+    address_v4=$(echo "${reg_response}" | jq -r '.config.interface.addresses.v4 // empty')
+    address_v6=$(echo "${reg_response}" | jq -r '.config.interface.addresses.v6 // empty')
+    client_id=$(echo "${reg_response}" | jq -r '.config.client_id // empty')
+
+    if [[ -z "${private_key}" || -z "${peer_pubkey}" ]]; then
+        msg_fail "WARP registration failed — could not get keys"
+        msg_info "API response: $(echo "${reg_response}" | jq -r '.errors // .message // "unknown error"' 2>/dev/null)"
         return 1
     fi
 
-    wgcf generate 2>&1 || true
-
-    if [[ ! -f "${WARP_CONFIG}/wgcf-profile.conf" ]]; then
-        msg_fail "Could not generate WireGuard profile"
-        return 1
+    # Decode client_id (base64) to reserved bytes
+    local reserved=""
+    if [[ -n "${client_id}" ]]; then
+        reserved=$(echo "${client_id}" | base64 -d 2>/dev/null | od -An -tu1 | tr -s ' ' ',' | sed 's/^,//;s/,$//')
     fi
-    msg_ok "WireGuard profile generated"
+
+    # Save all values
+    echo "${private_key}" > "${WARP_CONFIG}/private_key"
+    echo "${peer_pubkey}" > "${WARP_CONFIG}/peer_pubkey"
+    echo "${endpoint}" > "${WARP_CONFIG}/endpoint"
+    echo "${address_v4}" > "${WARP_CONFIG}/address_v4"
+    echo "${address_v6}" > "${WARP_CONFIG}/address_v6"
+    echo "${reserved}" > "${WARP_CONFIG}/reserved"
+    echo "${reg_response}" > "${WARP_CONFIG}/registration.json"
+
+    chmod 600 "${WARP_CONFIG}/private_key" "${WARP_CONFIG}/registration.json"
+
+    msg_ok "WARP keys obtained"
+    msg_info "  Address IPv4: ${address_v4}"
+    msg_info "  Address IPv6: ${address_v6}"
+    msg_info "  Endpoint    : ${endpoint}"
 }
 
-# --- Create wireproxy config from WireGuard profile ---
+# --- Create wireproxy config ---
 create_wireproxy_config() {
     msg_info "Creating wireproxy config..."
 
-    local profile="${WARP_CONFIG}/wgcf-profile.conf"
-    if [[ ! -f "${profile}" ]]; then
-        msg_fail "WireGuard profile not found"
-        return 1
-    fi
-
-    local private_key endpoint peer_pubkey
-    private_key=$(grep "^PrivateKey" "${profile}" | awk '{print $3}')
-    endpoint=$(grep "^Endpoint" "${profile}" | awk '{print $3}')
-    peer_pubkey=$(grep "^PublicKey" "${profile}" | awk '{print $3}')
-
-    # Parse address line — may have both v4 and v6 comma-separated
-    local addr_line
-    addr_line=$(grep "^Address" "${profile}" | head -1 | sed 's/^Address *= *//')
-    local address_v4 address_v6
-    address_v4=$(echo "${addr_line}" | cut -d',' -f1 | tr -d ' ')
-    address_v6=$(echo "${addr_line}" | cut -d',' -f2 | tr -d ' ')
-    [[ "${address_v6}" == "${address_v4}" ]] && address_v6=""
+    local private_key peer_pubkey endpoint address_v4 address_v6
+    private_key=$(cat "${WARP_CONFIG}/private_key" 2>/dev/null)
+    peer_pubkey=$(cat "${WARP_CONFIG}/peer_pubkey" 2>/dev/null)
+    endpoint=$(cat "${WARP_CONFIG}/endpoint" 2>/dev/null)
+    address_v4=$(cat "${WARP_CONFIG}/address_v4" 2>/dev/null)
+    address_v6=$(cat "${WARP_CONFIG}/address_v6" 2>/dev/null)
 
     if [[ -z "${private_key}" || -z "${peer_pubkey}" ]]; then
-        msg_fail "Could not extract keys from WireGuard profile"
+        msg_fail "WARP keys not found — run install first"
         return 1
     fi
 
-    # Build address line for wireproxy
-    local wp_address="${address_v4}"
-    [[ -n "${address_v6}" ]] && wp_address="${address_v4}, ${address_v6}"
+    # Default endpoint if missing
+    [[ -z "${endpoint}" ]] && endpoint="engage.cloudflareclient.com:2408"
+
+    # Build address line
+    local wp_address="${address_v4}/32"
+    [[ -n "${address_v6}" ]] && wp_address="${address_v4}/32, ${address_v6}/128"
 
     cat > "${WIREPROXY_CONF}" <<EOF
 [Interface]
@@ -221,11 +210,9 @@ EOF
         return 0
     fi
 
-    # Check service status for debug info
     msg_warn "wireproxy may not have started — checking status..."
     systemctl status wireproxy --no-pager 2>&1 | tail -5 || true
 
-    # Try once more
     sleep 3
     if ss -nltp 2>/dev/null | grep -q wireproxy; then
         msg_ok "WireProxy running on socks5://${WARP_SOCKS_ADDR}:${WARP_SOCKS_PORT}"
@@ -240,7 +227,6 @@ EOF
 configure_xray_warp() {
     msg_info "Configuring Xray WARP SOCKS5 outbound..."
 
-    # Remove any existing WARP outbounds (both old wireguard and socks types)
     local tmp_config
     tmp_config=$(mktemp)
     jq '.outbounds = [.outbounds[] | select(.tag != "warp" and .tag != "warp-socks5")]' \
@@ -252,7 +238,6 @@ configure_xray_warp() {
         return 1
     fi
 
-    # Add SOCKS5 outbound pointing to WireProxy + freedom outbound for IPv4
     jq --arg addr "${WARP_SOCKS_ADDR}" \
        --argjson port "${WARP_SOCKS_PORT}" \
     '
@@ -289,7 +274,6 @@ configure_xray_warp() {
         return 1
     fi
 
-    # Ensure domainStrategy is set in routing
     tmp_config=$(mktemp)
     jq '.routing.domainStrategy = "IPOnDemand"' "${XRAY_CONFIG}" > "${tmp_config}"
     if [[ -s "${tmp_config}" ]]; then
@@ -315,27 +299,22 @@ install_warp() {
         return 1
     fi
 
-    # Step 2: Download wgcf binary
-    if ! install_wgcf; then
-        return 1
-    fi
-
-    # Step 3: Register WARP account and generate WireGuard profile
+    # Step 2: Register with Cloudflare WARP API
     if ! register_warp; then
         return 1
     fi
 
-    # Step 4: Create wireproxy config from WireGuard profile
+    # Step 3: Create wireproxy config
     if ! create_wireproxy_config; then
         return 1
     fi
 
-    # Step 5: Create systemd service and start wireproxy
+    # Step 4: Create systemd service and start wireproxy
     if ! start_wireproxy_service; then
         return 1
     fi
 
-    # Step 6: Configure Xray SOCKS outbound
+    # Step 5: Configure Xray SOCKS outbound
     if ! configure_xray_warp; then
         return 1
     fi
@@ -372,16 +351,13 @@ add_warp_route() {
         return 0
     fi
 
-    # Save domains to config
     mkdir -p "${WARP_CONFIG}"
     for d in "${domains[@]}"; do
         echo "${d}" >> "${WARP_CONFIG}/domains"
     done
 
-    # Sort and deduplicate
     sort -u "${WARP_CONFIG}/domains" -o "${WARP_CONFIG}/domains"
 
-    # Build domain list with "domain:" prefix for proper subdomain matching
     local domain_arr
     domain_arr=$(while IFS= read -r d; do
         [[ -z "${d}" ]] && continue
@@ -390,7 +366,6 @@ add_warp_route() {
 
     local domain_json="[${domain_arr}]"
 
-    # Update Xray routing: remove old WARP rules, prepend new one
     local tmp_config
     tmp_config=$(mktemp)
 
@@ -445,7 +420,6 @@ delete_warp_route() {
     sed -i "${line_num}d" "${WARP_CONFIG}/domains"
     sort -u "${WARP_CONFIG}/domains" -o "${WARP_CONFIG}/domains"
 
-    # Rebuild Xray routing rules from remaining domains
     if [[ -s "${WARP_CONFIG}/domains" ]]; then
         local domain_arr
         domain_arr=$(while IFS= read -r d; do
@@ -473,7 +447,6 @@ delete_warp_route() {
             rm -f "${tmp_config}"
         fi
     else
-        # No more domains — remove WARP routing rule
         local tmp_config
         tmp_config=$(mktemp)
         jq '.routing.rules = [.routing.rules[] | select(.outboundTag != "warp")]' \
@@ -541,7 +514,7 @@ uninstall_warp() {
     rm -rf "${WARP_CONFIG}"
     rm -f "${CONFIG_DIR}/modules/warp_installed"
 
-    msg_ok "WARP removed (wireproxy + wgcf + config)"
+    msg_ok "WARP removed (wireproxy + config)"
 }
 
 # --- Check WARP status ---
