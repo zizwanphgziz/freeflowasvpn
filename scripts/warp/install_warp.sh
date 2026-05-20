@@ -207,10 +207,18 @@ extract_wireguard_keys() {
 
     local private_key address_v4 address_v6 endpoint peer_pubkey
     private_key=$(grep "^PrivateKey" "${profile_file}" | awk '{print $3}')
-    address_v4=$(grep "^Address" "${profile_file}" | head -1 | awk '{print $3}')
-    address_v6=$(grep "^Address" "${profile_file}" | tail -1 | awk '{print $3}')
     endpoint=$(grep "^Endpoint" "${profile_file}" | awk '{print $3}')
     peer_pubkey=$(grep "^PublicKey" "${profile_file}" | awk '{print $3}')
+
+    # Address line may contain both IPv4 and IPv6 comma-separated:
+    #   Address = 172.16.0.2/32, fd01:5ca1:ab1e:...:9d50/128
+    local addr_line
+    addr_line=$(grep "^Address" "${profile_file}" | head -1 | sed 's/^Address *= *//')
+    # Split on comma, trim whitespace, assign v4 and v6
+    address_v4=$(echo "${addr_line}" | cut -d',' -f1 | tr -d ' ')
+    address_v6=$(echo "${addr_line}" | cut -d',' -f2 | tr -d ' ')
+    # If only one address (no comma), v6 will equal v4
+    [[ "${address_v6}" == "${address_v4}" ]] && address_v6=""
 
     if [[ -z "${private_key}" || -z "${peer_pubkey}" ]]; then
         msg_fail "Could not extract keys from WireGuard profile"
