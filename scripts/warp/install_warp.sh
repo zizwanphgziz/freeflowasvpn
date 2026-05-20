@@ -1,266 +1,93 @@
 #!/bin/bash
 # ============================================================
 # FreeFlow ASVPN - WARP Cloudflare Module (Install/Uninstall)
-# Uses Xray native WireGuard outbound via wgcf — no external
-# daemon needed. Matches proven architecture from fscarmen/warp,
-# Remnawave docs, and XTLS/Xray-core guidance.
+# Uses fscarmen/warp WireProxy → SOCKS5 proxy on 127.0.0.1:40000
+# Xray routes selected domains through the SOCKS outbound.
+# Proven architecture from hamid-gh98/x-ui-scripts & JinGGoVPN.
 # ============================================================
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/../core/common.sh"
 
 WARP_CONFIG="${CONFIG_DIR}/warp"
+WARP_SOCKS_PORT="40000"
+WARP_SOCKS_ADDR="127.0.0.1"
 
-# --- Install wgcf binary ---
-install_wgcf() {
-    # Validate existing binary with --help (wgcf has no --version flag)
-    if command -v wgcf &>/dev/null && wgcf --help &>/dev/null; then
-        msg_ok "wgcf already installed"
+# --- Install fscarmen/warp script (the 'warp' command) ---
+install_warp_script() {
+    if [[ -x /usr/bin/warp || -x /etc/wireguard/menu.sh ]]; then
+        msg_ok "warp command already installed"
         return 0
     fi
 
-    # Remove broken binary if it exists but doesn't execute
-    rm -f /usr/local/bin/wgcf 2>/dev/null
+    msg_info "Installing fscarmen/warp..."
+    mkdir -p /etc/wireguard
 
-    msg_info "Downloading wgcf..."
-    local arch
-    arch=$(uname -m)
-    local wgcf_arch
-    case "${arch}" in
-        x86_64|amd64) wgcf_arch="amd64" ;;
-        aarch64|arm64) wgcf_arch="arm64" ;;
-        armv7l) wgcf_arch="armv7" ;;
-        *) msg_fail "Unsupported architecture: ${arch}"; return 1 ;;
-    esac
-
-    # Get latest release tag (e.g. "v2.2.30") via GitHub API redirect
-    local wgcf_tag
-    wgcf_tag=$(curl -sI "https://github.com/ViRb3/wgcf/releases/latest" \
-               | grep -i '^location:' | sed 's|.*/tag/||;s/[[:space:]]//g')
-
-    if [[ -z "${wgcf_tag}" ]]; then
-        msg_warn "Could not detect latest wgcf version, using v2.2.30"
-        wgcf_tag="v2.2.30"
-    fi
-
-    # Asset names are: wgcf_<version_without_v>_linux_<arch>
-    local wgcf_ver="${wgcf_tag#v}"
-    local wgcf_url="https://github.com/ViRb3/wgcf/releases/download/${wgcf_tag}/wgcf_${wgcf_ver}_linux_${wgcf_arch}"
-
-    msg_info "Downloading wgcf ${wgcf_tag}..."
-    if wget -q -O /usr/local/bin/wgcf "${wgcf_url}" 2>/dev/null || \
-       curl -sL -o /usr/local/bin/wgcf "${wgcf_url}" 2>/dev/null; then
-        chmod +x /usr/local/bin/wgcf
-        # Verify it's a real binary (wgcf has no --version, use --help)
-        if ! wgcf --help &>/dev/null; then
-            rm -f /usr/local/bin/wgcf
-            msg_fail "Downloaded file is not a valid wgcf binary"
-            msg_info "Trying warp-go fallback..."
-            install_warp_go
-            return $?
-        fi
-        msg_ok "wgcf ${wgcf_tag} installed"
+    if wget -q -N -P /etc/wireguard \
+       "https://gitlab.com/fscarmen/warp/-/raw/main/menu.sh" 2>/dev/null || \
+       curl -sL -o /etc/wireguard/menu.sh \
+       "https://gitlab.com/fscarmen/warp/-/raw/main/menu.sh" 2>/dev/null; then
+        chmod +x /etc/wireguard/menu.sh
+        ln -sf /etc/wireguard/menu.sh /usr/bin/warp
+        msg_ok "warp command installed"
     else
-        msg_warn "Could not download wgcf — trying warp-go fallback..."
-        install_warp_go
-        return $?
+        msg_fail "Could not download fscarmen/warp script"
+        return 1
     fi
 }
 
-# --- Fallback: install warp-go binary ---
-install_warp_go() {
-    msg_info "Downloading warp-go..."
+# --- Install WireProxy (WARP SOCKS5) via fscarmen/warp ---
+install_wireproxy() {
+    # Check if wireproxy is already running
+    if command -v wireproxy &>/dev/null && ss -nltp 2>/dev/null | grep -q wireproxy; then
+        local existing_port
+        existing_port=$(ss -nltp 2>/dev/null | grep wireproxy | awk '{print $(NF-2)}' | head -1 | cut -d: -f2)
+        WARP_SOCKS_PORT="${existing_port:-40000}"
+        msg_ok "WireProxy already running on socks5://${WARP_SOCKS_ADDR}:${WARP_SOCKS_PORT}"
+        return 0
+    fi
 
-    local warpgo_dir="${WARP_CONFIG}/warp-go"
-    mkdir -p "${warpgo_dir}"
+    msg_info "Installing WireProxy (WARP SOCKS5 proxy)..."
 
-    if wget -q -O "${warpgo_dir}/warp-go.zip" \
-       "https://raw.githubusercontent.com/JinGGoVPN/DATA/main/file/warp-go.zip" 2>/dev/null || \
-       curl -sL -o "${warpgo_dir}/warp-go.zip" \
-       "https://raw.githubusercontent.com/JinGGoVPN/DATA/main/file/warp-go.zip" 2>/dev/null; then
-        cd "${warpgo_dir}" || return 1
-        unzip -o warp-go.zip >/dev/null 2>&1
-        chmod +x "${warpgo_dir}/warp-go"
-        if "${warpgo_dir}/warp-go" -h &>/dev/null; then
-            msg_ok "warp-go installed"
-            # Mark that we're using warp-go instead of wgcf
-            echo "warp-go" > "${WARP_CONFIG}/backend"
+    # fscarmen/warp interactive menu: w = WireProxy, then select account type and port
+    # Input: 1 (WARP free account), 1 (default config), port, 1 (confirm)
+    if ! warp w <<< $'1\n1\n'"${WARP_SOCKS_PORT}"$'\n1\n' 2>&1; then
+        msg_warn "warp command returned non-zero — checking if wireproxy started anyway..."
+    fi
+
+    sleep 3
+
+    # Verify wireproxy is running
+    if command -v wireproxy &>/dev/null && ss -nltp 2>/dev/null | grep -q wireproxy; then
+        local running_port
+        running_port=$(ss -nltp 2>/dev/null | grep wireproxy | awk '{print $(NF-2)}' | head -1 | cut -d: -f2)
+        WARP_SOCKS_PORT="${running_port:-40000}"
+        msg_ok "WireProxy running on socks5://${WARP_SOCKS_ADDR}:${WARP_SOCKS_PORT}"
+        return 0
+    fi
+
+    # WireProxy might not be running yet — try starting it
+    if systemctl start wireproxy 2>/dev/null; then
+        sleep 2
+        if ss -nltp 2>/dev/null | grep -q wireproxy; then
+            msg_ok "WireProxy started on socks5://${WARP_SOCKS_ADDR}:${WARP_SOCKS_PORT}"
             return 0
         fi
-        msg_fail "warp-go binary is not valid"
-        return 1
     fi
 
-    msg_fail "Could not download warp-go"
+    msg_fail "WireProxy failed to start"
+    msg_info "Try manually: warp w"
     return 1
 }
 
-# --- Register with Cloudflare WARP and generate WireGuard profile ---
-register_warp() {
-    msg_info "Registering with Cloudflare WARP..."
-
-    mkdir -p "${WARP_CONFIG}"
-    cd "${WARP_CONFIG}" || return 1
-
-    local backend
-    backend=$(cat "${WARP_CONFIG}/backend" 2>/dev/null || echo "wgcf")
-
-    if [[ "${backend}" == "warp-go" ]]; then
-        register_warp_go
-        return $?
-    fi
-
-    # --- wgcf registration path ---
-    # Remove stale account/profile files so wgcf starts fresh
-    rm -f "${WARP_CONFIG}/wgcf-account.toml" "${WARP_CONFIG}/wgcf-profile.conf"
-
-    # Register new account (retry up to 3 times — Cloudflare API may
-    # return 500 on the first attempt yet still create the account file)
-    local attempt
-    for attempt in 1 2 3; do
-        wgcf register --accept-tos 2>&1 || true
-
-        if [[ -f "${WARP_CONFIG}/wgcf-account.toml" ]]; then
-            msg_ok "WARP account registered (attempt ${attempt})"
-            break
-        fi
-
-        if [[ "${attempt}" -lt 3 ]]; then
-            msg_warn "Registration attempt ${attempt} failed — retrying in 3s..."
-            sleep 3
-        fi
-    done
-
-    if [[ ! -f "${WARP_CONFIG}/wgcf-account.toml" ]]; then
-        msg_fail "WARP registration failed after 3 attempts"
-        msg_info "This may be a Cloudflare API issue — try again later"
-        return 1
-    fi
-
-    # Generate WireGuard profile
-    wgcf generate 2>&1 || true
-
-    if [[ ! -f "${WARP_CONFIG}/wgcf-profile.conf" ]]; then
-        msg_fail "Could not generate WireGuard profile"
-        return 1
-    fi
-    msg_ok "WireGuard profile generated"
-
-    extract_wireguard_keys "${WARP_CONFIG}/wgcf-profile.conf"
-}
-
-# --- Register via warp-go (fallback) ---
-register_warp_go() {
-    msg_info "Registering via warp-go..."
-
-    local warpgo_dir="${WARP_CONFIG}/warp-go"
-
-    # Get WARP config from zeroteam API or direct Cloudflare API
-    msg_info "Getting WARP config..."
-    if ! wget -q -O "${warpgo_dir}/warp.conf" \
-         "https://api.zeroteam.top/warp?format=warp-go" 2>/dev/null; then
-        msg_warn "zeroteam API unavailable — registering directly..."
-        # Direct Cloudflare API registration
-        local reg_response
-        reg_response=$(curl -s -X POST "https://api.cloudflareclient.com/v0a2223/reg" \
-            -H "CF-Client-Version: a-6.11-2223" \
-            -H "Content-Type: application/json" \
-            -d '{"key":"'$(wg genkey 2>/dev/null || openssl rand -base64 32)'","install_id":"","fcm_token":"","tos":"'$(date -u +%Y-%m-%dT%H:%M:%S.000Z)'","model":"PC","serial_number":"","locale":"en_US"}' 2>/dev/null)
-
-        if [[ -z "${reg_response}" ]]; then
-            msg_fail "Could not register with Cloudflare WARP"
-            return 1
-        fi
-
-        # Extract WireGuard config from API response
-        local private_key peer_pubkey address_v4 address_v6
-        private_key=$(echo "${reg_response}" | jq -r '.config.client_id // empty' 2>/dev/null)
-
-        # If direct API doesn't return expected format, try warp-go export
-        if [[ -z "${private_key}" ]]; then
-            msg_fail "Could not parse Cloudflare API response"
-            return 1
-        fi
-    fi
-
-    # If we got warp.conf, export WireGuard config via warp-go
-    if [[ -f "${warpgo_dir}/warp.conf" ]]; then
-        cd "${warpgo_dir}" || return 1
-        ./warp-go --config=warp.conf --export-wireguard=proxy.conf 2>&1 || true
-
-        if [[ ! -f "${warpgo_dir}/proxy.conf" ]]; then
-            msg_fail "Could not generate WireGuard profile via warp-go"
-            return 1
-        fi
-        msg_ok "WireGuard profile generated via warp-go"
-        extract_wireguard_keys "${warpgo_dir}/proxy.conf"
-        return $?
-    fi
-
-    msg_fail "No WireGuard profile generated"
-    return 1
-}
-
-# --- Extract WireGuard keys from profile ---
-extract_wireguard_keys() {
-    local profile_file="$1"
-
-    local private_key address_v4 address_v6 endpoint peer_pubkey
-    private_key=$(grep "^PrivateKey" "${profile_file}" | awk '{print $3}')
-    endpoint=$(grep "^Endpoint" "${profile_file}" | awk '{print $3}')
-    peer_pubkey=$(grep "^PublicKey" "${profile_file}" | awk '{print $3}')
-
-    # Address line may contain both IPv4 and IPv6 comma-separated:
-    #   Address = 172.16.0.2/32, fd01:5ca1:ab1e:...:9d50/128
-    local addr_line
-    addr_line=$(grep "^Address" "${profile_file}" | head -1 | sed 's/^Address *= *//')
-    # Split on comma, trim whitespace, assign v4 and v6
-    address_v4=$(echo "${addr_line}" | cut -d',' -f1 | tr -d ' ')
-    address_v6=$(echo "${addr_line}" | cut -d',' -f2 | tr -d ' ')
-    # If only one address (no comma), v6 will equal v4
-    [[ "${address_v6}" == "${address_v4}" ]] && address_v6=""
-
-    if [[ -z "${private_key}" || -z "${peer_pubkey}" ]]; then
-        msg_fail "Could not extract keys from WireGuard profile"
-        return 1
-    fi
-
-    # Save extracted values for Xray config
-    echo "${private_key}" > "${WARP_CONFIG}/private_key"
-    echo "${peer_pubkey}" > "${WARP_CONFIG}/peer_pubkey"
-    echo "${address_v4}" > "${WARP_CONFIG}/address_v4"
-    echo "${address_v6}" > "${WARP_CONFIG}/address_v6"
-    echo "${endpoint}" > "${WARP_CONFIG}/endpoint"
-
-    chmod 600 "${WARP_CONFIG}/private_key"
-
-    msg_ok "WARP keys extracted"
-    msg_info "  Private key : [saved]"
-    msg_info "  Address IPv4: ${address_v4}"
-    msg_info "  Address IPv6: ${address_v6}"
-    msg_info "  Endpoint    : ${endpoint}"
-}
-
-# --- Configure Xray WARP outbound (native WireGuard protocol) ---
+# --- Configure Xray SOCKS outbound to WireProxy ---
 configure_xray_warp() {
-    msg_info "Configuring Xray WARP outbound (native WireGuard)..."
+    msg_info "Configuring Xray WARP SOCKS5 outbound..."
 
-    local private_key peer_pubkey address_v4 address_v6 endpoint
-    private_key=$(cat "${WARP_CONFIG}/private_key" 2>/dev/null)
-    peer_pubkey=$(cat "${WARP_CONFIG}/peer_pubkey" 2>/dev/null)
-    address_v4=$(cat "${WARP_CONFIG}/address_v4" 2>/dev/null)
-    address_v6=$(cat "${WARP_CONFIG}/address_v6" 2>/dev/null)
-    endpoint=$(cat "${WARP_CONFIG}/endpoint" 2>/dev/null || echo "engage.cloudflareclient.com:2408")
-
-    if [[ -z "${private_key}" || -z "${peer_pubkey}" ]]; then
-        msg_fail "WARP keys not found — run install first"
-        return 1
-    fi
-
-    # Remove any existing WARP outbound
+    # Remove any existing WARP outbounds (both old wireguard and socks types)
     local tmp_config
     tmp_config=$(mktemp)
-    jq '.outbounds = [.outbounds[] | select(.tag != "warp")]' \
+    jq '.outbounds = [.outbounds[] | select(.tag != "warp" and .tag != "warp-socks5")]' \
         "${XRAY_CONFIG}" > "${tmp_config}" 2>/dev/null
 
     if [[ ! -s "${tmp_config}" ]]; then
@@ -269,39 +96,32 @@ configure_xray_warp() {
         return 1
     fi
 
-    # Split endpoint into host:port
-    local ep_host ep_port
-    ep_host="${endpoint%%:*}"
-    ep_port="${endpoint##*:}"
-
-    # Build address array — include both v4 and v6
-    local addresses="[\"${address_v4}\"]"
-    if [[ -n "${address_v6}" && "${address_v6}" != "${address_v4}" ]]; then
-        addresses="[\"${address_v4}\", \"${address_v6}\"]"
-    fi
-
-    # Add Xray native WireGuard outbound
-    jq --arg sk "${private_key}" \
-       --arg pk "${peer_pubkey}" \
-       --argjson addrs "${addresses}" \
-       --arg ep "${ep_host}:${ep_port}" \
+    # Add SOCKS5 outbound pointing to WireProxy + freedom outbound for IPv4
+    jq --arg addr "${WARP_SOCKS_ADDR}" \
+       --argjson port "${WARP_SOCKS_PORT}" \
     '
-        .outbounds += [{
-            "protocol": "wireguard",
-            "settings": {
-                "secretKey": $sk,
-                "address": $addrs,
-                "peers": [{
-                    "publicKey": $pk,
-                    "allowedIPs": ["0.0.0.0/0", "::/0"],
-                    "endpoint": $ep
-                }],
-                "reserved": [0, 0, 0],
-                "mtu": 1280,
-                "kernelMode": false
+        .outbounds += [
+            {
+                "tag": "warp-socks5",
+                "protocol": "socks",
+                "settings": {
+                    "servers": [{
+                        "address": $addr,
+                        "port": $port
+                    }]
+                }
             },
-            "tag": "warp"
-        }]
+            {
+                "tag": "warp",
+                "protocol": "freedom",
+                "proxySettings": {
+                    "tag": "warp-socks5"
+                },
+                "settings": {
+                    "domainStrategy": "UseIPv4"
+                }
+            }
+        ]
     ' "${tmp_config}" > "${tmp_config}.new"
 
     if [[ -s "${tmp_config}.new" ]]; then
@@ -313,7 +133,7 @@ configure_xray_warp() {
         return 1
     fi
 
-    # Ensure domainStrategy is set in routing for proper domain resolution
+    # Ensure domainStrategy is set in routing
     tmp_config=$(mktemp)
     jq '.routing.domainStrategy = "IPOnDemand"' "${XRAY_CONFIG}" > "${tmp_config}"
     if [[ -s "${tmp_config}" ]]; then
@@ -323,7 +143,7 @@ configure_xray_warp() {
     fi
 
     restart_service xray
-    msg_ok "Xray WARP outbound configured (native WireGuard)"
+    msg_ok "Xray WARP outbound configured (SOCKS5 → WireProxy)"
 }
 
 # --- Main install function ---
@@ -331,31 +151,32 @@ install_warp() {
     print_section "Installing Cloudflare WARP"
 
     msg_info "WARP bypasses domains that cannot pass through the VPS"
-    msg_info "Traffic is routed via Cloudflare's network via Xray WireGuard"
+    msg_info "Traffic routes: Xray → SOCKS5 → WireProxy → Cloudflare WARP"
     echo ""
 
-    # Step 1: Install wgcf
-    if ! install_wgcf; then
+    # Step 1: Install fscarmen/warp script
+    if ! install_warp_script; then
         return 1
     fi
 
-    # Step 2: Register and generate keys
-    if ! register_warp; then
+    # Step 2: Install WireProxy (SOCKS5 proxy)
+    if ! install_wireproxy; then
         return 1
     fi
 
-    # Step 3: Configure Xray outbound
+    # Step 3: Configure Xray SOCKS outbound
     if ! configure_xray_warp; then
         return 1
     fi
 
     # Mark as installed
-    mkdir -p "${CONFIG_DIR}/modules"
+    mkdir -p "${CONFIG_DIR}/modules" "${WARP_CONFIG}"
     touch "${CONFIG_DIR}/modules/warp_installed"
-    echo "xray-wireguard" > "${WARP_CONFIG}/method"
+    echo "wireproxy-socks5" > "${WARP_CONFIG}/method"
+    echo "${WARP_SOCKS_PORT}" > "${WARP_CONFIG}/port"
 
     msg_ok "WARP installed successfully"
-    msg_info "Method: Xray native WireGuard (no external daemon)"
+    msg_info "Method: WireProxy SOCKS5 on ${WARP_SOCKS_ADDR}:${WARP_SOCKS_PORT}"
     msg_info "Add domains to bypass via: freeflow → WARP menu → Add Domain"
 }
 
@@ -519,11 +340,11 @@ uninstall_warp() {
         return 1
     fi
 
-    # Remove WARP outbound and routing rules from Xray config
+    # Remove WARP outbounds and routing rules from Xray config
     local tmp_config
     tmp_config=$(mktemp)
     jq '
-        .outbounds = [.outbounds[] | select(.tag != "warp")] |
+        .outbounds = [.outbounds[] | select(.tag != "warp" and .tag != "warp-socks5")] |
         .routing.rules = [.routing.rules[] | select(.outboundTag != "warp")]
     ' "${XRAY_CONFIG}" > "${tmp_config}" 2>/dev/null
 
@@ -534,8 +355,18 @@ uninstall_warp() {
         rm -f "${tmp_config}"
     fi
 
-    # Remove wgcf binary and config
-    rm -f /usr/local/bin/wgcf
+    # Stop and disable wireproxy
+    systemctl stop wireproxy 2>/dev/null
+    systemctl disable wireproxy 2>/dev/null
+
+    # Uninstall via fscarmen/warp if available
+    if [[ -x /usr/bin/warp ]]; then
+        warp u <<< $'y\n' 2>/dev/null || true
+    fi
+
+    # Clean up
+    rm -f /usr/bin/warp
+    rm -rf /etc/wireguard
     rm -rf "${WARP_CONFIG}"
     rm -f "${CONFIG_DIR}/modules/warp_installed"
 
@@ -549,8 +380,9 @@ check_warp_status() {
         return
     fi
 
-    # Check if Xray has WARP outbound configured
-    if jq -e '.outbounds[] | select(.tag == "warp" and .protocol == "wireguard")' "${XRAY_CONFIG}" &>/dev/null; then
+    # Check if wireproxy is running and Xray has SOCKS outbound
+    if ss -nltp 2>/dev/null | grep -q wireproxy && \
+       jq -e '.outbounds[] | select(.tag == "warp-socks5" and .protocol == "socks")' "${XRAY_CONFIG}" &>/dev/null; then
         echo "active"
     else
         echo "configured"

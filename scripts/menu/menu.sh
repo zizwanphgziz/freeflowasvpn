@@ -307,8 +307,9 @@ menu_warp() {
         clear
         local warp_st
         if [[ -f "${CONFIG_DIR}/modules/warp_installed" ]]; then
-            # Check if Xray has WireGuard WARP outbound
-            if jq -e '.outbounds[] | select(.tag == "warp" and .protocol == "wireguard")' "${XRAY_CONFIG}" &>/dev/null; then
+            # Check if wireproxy is running and Xray has SOCKS outbound
+            if ss -nltp 2>/dev/null | grep -q wireproxy && \
+               jq -e '.outbounds[] | select(.tag == "warp-socks5")' "${XRAY_CONFIG}" &>/dev/null; then
                 warp_st="${GREEN}ON${NC}"
             else
                 warp_st="${YELLOW}INSTALLED${NC}"

@@ -342,9 +342,16 @@ echo -e "${BOLD}[12] WARP Status${NC}"
 if [[ -f "${CONFIG_DIR}/modules/warp_installed" ]]; then
     warp_method=$(cat "${CONFIG_DIR}/warp/method" 2>/dev/null || echo "unknown")
     info "WARP method: ${warp_method}"
-    # Check Xray WARP outbound (native WireGuard)
-    if [[ -f "${XRAY_CONFIG}" ]] && jq -e '.outbounds[] | select(.tag=="warp" and .protocol=="wireguard")' "${XRAY_CONFIG}" &>/dev/null; then
-        ok "Xray WARP outbound: configured (native WireGuard)"
+    # Check wireproxy SOCKS5 status
+    if ss -nltp 2>/dev/null | grep -q wireproxy; then
+        wp_port=$(ss -nltp 2>/dev/null | grep wireproxy | awk '{print $(NF-2)}' | head -1 | cut -d: -f2)
+        ok "WireProxy: running on socks5://127.0.0.1:${wp_port}"
+    else
+        warn "WireProxy: NOT running"
+    fi
+    # Check Xray WARP SOCKS outbound
+    if [[ -f "${XRAY_CONFIG}" ]] && jq -e '.outbounds[] | select(.tag=="warp-socks5" and .protocol=="socks")' "${XRAY_CONFIG}" &>/dev/null; then
+        ok "Xray WARP outbound: configured (SOCKS5 → WireProxy)"
     elif [[ -f "${XRAY_CONFIG}" ]] && jq -e '.outbounds[] | select(.tag=="warp")' "${XRAY_CONFIG}" &>/dev/null; then
         warn "Xray WARP outbound: configured (legacy method)"
     else
