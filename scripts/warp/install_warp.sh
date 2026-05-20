@@ -1,10 +1,10 @@
 #!/bin/bash
 # ============================================================
 # FreeFlow ASVPN - WARP Cloudflare Module (Install/Uninstall)
-# Self-contained: registers directly with Cloudflare API,
-# downloads wireproxy from GitHub, creates SOCKS5 proxy on
-# 127.0.0.1:40000, configures Xray outbound.
-# Architecture from hamid-gh98/x-ui-scripts & JinGGoVPN.
+# Uses hamid-gh98/x-ui-scripts WARP installer (fscarmen/warp).
+# Pre-installs wireproxy from GitHub to avoid packagecloud.io
+# download failures, then lets gh98 handle WARP registration
+# and wireproxy configuration.
 # ============================================================
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -14,19 +14,17 @@ WARP_CONFIG="${CONFIG_DIR}/warp"
 WARP_SOCKS_PORT="40000"
 WARP_SOCKS_ADDR="127.0.0.1"
 WIREPROXY_BIN="/usr/local/bin/wireproxy"
-WIREPROXY_CONF="/etc/wireproxy.conf"
 
-CF_API="https://api.cloudflareclient.com/v0a2223"
-CF_CLIENT_VER="a-6.11-2223"
+GH98_SCRIPT_URL="https://raw.githubusercontent.com/hamid-gh98/x-ui-scripts/main/install_warp_proxy.sh"
 
-# --- Download wireproxy binary from GitHub ---
+# --- Pre-install wireproxy binary from GitHub ---
 install_wireproxy_bin() {
-    if [[ -x "${WIREPROXY_BIN}" ]]; then
+    if command -v wireproxy &>/dev/null; then
         msg_ok "wireproxy binary already installed"
         return 0
     fi
 
-    msg_info "Downloading wireproxy..."
+    msg_info "Pre-installing wireproxy from GitHub..."
     local arch
     arch=$(uname -m)
     local wp_arch
@@ -49,177 +47,65 @@ install_wireproxy_bin() {
             mv "${tmp_dir}/wireproxy" "${WIREPROXY_BIN}"
             chmod +x "${WIREPROXY_BIN}"
             rm -rf "${tmp_dir}"
-            msg_ok "wireproxy installed"
+            msg_ok "wireproxy binary installed from GitHub"
             return 0
         fi
     fi
 
     rm -rf "${tmp_dir}"
-    msg_fail "Could not download wireproxy"
+    msg_fail "Could not download wireproxy from GitHub"
     return 1
 }
 
-# --- Register with Cloudflare WARP API directly ---
-register_warp() {
-    msg_info "Registering with Cloudflare WARP..."
+# --- Run gh98 WARP installer ---
+run_gh98_warp_install() {
+    msg_info "Running hamid-gh98 WARP installer..."
+    msg_info "This will register WARP and configure wireproxy via fscarmen/warp"
+    echo ""
 
-    mkdir -p "${WARP_CONFIG}"
+    # Download and run the gh98 script with -yf (accept defaults + force)
+    local tmp_script
+    tmp_script=$(mktemp)
+    if wget -q -O "${tmp_script}" "${GH98_SCRIPT_URL}" 2>/dev/null || \
+       curl -sL -o "${tmp_script}" "${GH98_SCRIPT_URL}" 2>/dev/null; then
+        chmod +x "${tmp_script}"
+        bash "${tmp_script}" -yf
+        local exit_code=$?
+        rm -f "${tmp_script}"
 
-    # Generate a random key for registration
-    local reg_key
-    reg_key=$(openssl rand -base64 32)
-
-    local reg_response
-    local attempt
-    for attempt in 1 2 3; do
-        reg_response=$(curl -s -X POST "${CF_API}/reg" \
-            -H "CF-Client-Version: ${CF_CLIENT_VER}" \
-            -H "Content-Type: application/json" \
-            -d '{
-                "key": "'"${reg_key}"'",
-                "install_id": "",
-                "fcm_token": "",
-                "tos": "'"$(date -u +%Y-%m-%dT%H:%M:%S.000Z)"'",
-                "model": "PC",
-                "serial_number": "",
-                "locale": "en_US"
-            }' 2>/dev/null)
-
-        # Check if response has the config we need
-        if echo "${reg_response}" | jq -e '.config.peers[0].public_key' &>/dev/null; then
-            msg_ok "WARP registered (attempt ${attempt})"
-            break
+        if [[ ${exit_code} -ne 0 ]]; then
+            msg_warn "gh98 script exited with code ${exit_code} — checking if wireproxy started anyway..."
         fi
-
-        if [[ "${attempt}" -lt 3 ]]; then
-            msg_warn "Registration attempt ${attempt} failed — retrying in 3s..."
-            sleep 3
-        fi
-    done
-
-    # Extract WireGuard config from API response
-    local private_key peer_pubkey endpoint address_v4 address_v6 client_id
-    private_key=$(echo "${reg_response}" | jq -r '.key // empty')
-    peer_pubkey=$(echo "${reg_response}" | jq -r '.config.peers[0].public_key // empty')
-    endpoint=$(echo "${reg_response}" | jq -r '.config.peers[0].endpoint.host // empty')
-    address_v4=$(echo "${reg_response}" | jq -r '.config.interface.addresses.v4 // empty')
-    address_v6=$(echo "${reg_response}" | jq -r '.config.interface.addresses.v6 // empty')
-    client_id=$(echo "${reg_response}" | jq -r '.config.client_id // empty')
-
-    if [[ -z "${private_key}" || -z "${peer_pubkey}" ]]; then
-        msg_fail "WARP registration failed — could not get keys"
-        msg_info "API response: $(echo "${reg_response}" | jq -r '.errors // .message // "unknown error"' 2>/dev/null)"
+    else
+        rm -f "${tmp_script}"
+        msg_fail "Could not download gh98 WARP installer"
         return 1
     fi
 
-    # Decode client_id (base64) to reserved bytes
-    local reserved=""
-    if [[ -n "${client_id}" ]]; then
-        reserved=$(echo "${client_id}" | base64 -d 2>/dev/null | od -An -tu1 | tr -s ' ' ',' | sed 's/^,//;s/,$//')
-    fi
-
-    # Save all values
-    echo "${private_key}" > "${WARP_CONFIG}/private_key"
-    echo "${peer_pubkey}" > "${WARP_CONFIG}/peer_pubkey"
-    echo "${endpoint}" > "${WARP_CONFIG}/endpoint"
-    echo "${address_v4}" > "${WARP_CONFIG}/address_v4"
-    echo "${address_v6}" > "${WARP_CONFIG}/address_v6"
-    echo "${reserved}" > "${WARP_CONFIG}/reserved"
-    echo "${reg_response}" > "${WARP_CONFIG}/registration.json"
-
-    chmod 600 "${WARP_CONFIG}/private_key" "${WARP_CONFIG}/registration.json"
-
-    msg_ok "WARP keys obtained"
-    msg_info "  Address IPv4: ${address_v4}"
-    msg_info "  Address IPv6: ${address_v6}"
-    msg_info "  Endpoint    : ${endpoint}"
-}
-
-# --- Create wireproxy config ---
-create_wireproxy_config() {
-    msg_info "Creating wireproxy config..."
-
-    local private_key peer_pubkey endpoint address_v4 address_v6
-    private_key=$(cat "${WARP_CONFIG}/private_key" 2>/dev/null)
-    peer_pubkey=$(cat "${WARP_CONFIG}/peer_pubkey" 2>/dev/null)
-    endpoint=$(cat "${WARP_CONFIG}/endpoint" 2>/dev/null)
-    address_v4=$(cat "${WARP_CONFIG}/address_v4" 2>/dev/null)
-    address_v6=$(cat "${WARP_CONFIG}/address_v6" 2>/dev/null)
-
-    if [[ -z "${private_key}" || -z "${peer_pubkey}" ]]; then
-        msg_fail "WARP keys not found — run install first"
-        return 1
-    fi
-
-    # Default endpoint if missing
-    [[ -z "${endpoint}" ]] && endpoint="engage.cloudflareclient.com:2408"
-
-    # Build address line
-    local wp_address="${address_v4}/32"
-    [[ -n "${address_v6}" ]] && wp_address="${address_v4}/32, ${address_v6}/128"
-
-    cat > "${WIREPROXY_CONF}" <<EOF
-[Interface]
-PrivateKey = ${private_key}
-Address = ${wp_address}
-DNS = 1.1.1.1
-MTU = 1280
-
-[Peer]
-PublicKey = ${peer_pubkey}
-Endpoint = ${endpoint}
-AllowedIPs = 0.0.0.0/0, ::/0
-PersistentKeepalive = 30
-
-[Socks5]
-BindAddress = ${WARP_SOCKS_ADDR}:${WARP_SOCKS_PORT}
-EOF
-
-    chmod 600 "${WIREPROXY_CONF}"
-    msg_ok "wireproxy config created"
-    msg_info "  SOCKS5: ${WARP_SOCKS_ADDR}:${WARP_SOCKS_PORT}"
-}
-
-# --- Create systemd service and start wireproxy ---
-start_wireproxy_service() {
-    msg_info "Starting wireproxy service..."
-
-    cat > /etc/systemd/system/wireproxy.service <<EOF
-[Unit]
-Description=WireProxy WARP SOCKS5 Proxy
-After=network.target
-
-[Service]
-Type=simple
-ExecStart=${WIREPROXY_BIN} -c ${WIREPROXY_CONF}
-Restart=always
-RestartSec=5
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-    systemctl daemon-reload
-    systemctl enable wireproxy 2>/dev/null
-    systemctl restart wireproxy
-
-    sleep 3
-
+    # Verify wireproxy is running
+    sleep 2
     if ss -nltp 2>/dev/null | grep -q wireproxy; then
+        local running_port
+        running_port=$(ss -nltp 2>/dev/null | grep wireproxy | awk '{print $(NF-2)}' | head -1 | cut -d: -f2)
+        WARP_SOCKS_PORT="${running_port:-40000}"
         msg_ok "WireProxy running on socks5://${WARP_SOCKS_ADDR}:${WARP_SOCKS_PORT}"
         return 0
     fi
 
-    msg_warn "wireproxy may not have started — checking status..."
-    systemctl status wireproxy --no-pager 2>&1 | tail -5 || true
-
-    sleep 3
-    if ss -nltp 2>/dev/null | grep -q wireproxy; then
-        msg_ok "WireProxy running on socks5://${WARP_SOCKS_ADDR}:${WARP_SOCKS_PORT}"
-        return 0
+    # Try starting wireproxy if service exists but not running
+    if systemctl start wireproxy 2>/dev/null; then
+        sleep 2
+        if ss -nltp 2>/dev/null | grep -q wireproxy; then
+            local running_port
+            running_port=$(ss -nltp 2>/dev/null | grep wireproxy | awk '{print $(NF-2)}' | head -1 | cut -d: -f2)
+            WARP_SOCKS_PORT="${running_port:-40000}"
+            msg_ok "WireProxy started on socks5://${WARP_SOCKS_ADDR}:${WARP_SOCKS_PORT}"
+            return 0
+        fi
     fi
 
-    msg_fail "WireProxy failed to start"
+    msg_fail "WireProxy failed to start after gh98 installation"
+    msg_info "Try manually: warp w"
     return 1
 }
 
@@ -292,29 +178,20 @@ install_warp() {
 
     msg_info "WARP bypasses domains that cannot pass through the VPS"
     msg_info "Traffic routes: Xray → SOCKS5 → WireProxy → Cloudflare WARP"
+    msg_info "Using hamid-gh98 WARP installer (fscarmen/warp)"
     echo ""
 
-    # Step 1: Download wireproxy binary
+    # Step 1: Pre-install wireproxy binary from GitHub
     if ! install_wireproxy_bin; then
         return 1
     fi
 
-    # Step 2: Register with Cloudflare WARP API
-    if ! register_warp; then
+    # Step 2: Run gh98 WARP installer (handles registration + config)
+    if ! run_gh98_warp_install; then
         return 1
     fi
 
-    # Step 3: Create wireproxy config
-    if ! create_wireproxy_config; then
-        return 1
-    fi
-
-    # Step 4: Create systemd service and start wireproxy
-    if ! start_wireproxy_service; then
-        return 1
-    fi
-
-    # Step 5: Configure Xray SOCKS outbound
+    # Step 3: Configure Xray SOCKS outbound
     if ! configure_xray_warp; then
         return 1
     fi
@@ -499,22 +376,25 @@ uninstall_warp() {
         rm -f "${tmp_config}"
     fi
 
-    # Stop and remove wireproxy service
+    # Stop wireproxy service
     systemctl stop wireproxy 2>/dev/null
     systemctl disable wireproxy 2>/dev/null
-    rm -f /etc/systemd/system/wireproxy.service
-    systemctl daemon-reload 2>/dev/null
 
-    # Remove binaries and config
+    # Uninstall via fscarmen/warp (handles WARP account cleanup)
+    if command -v warp &>/dev/null; then
+        warp u <<< $'y\n' 2>/dev/null || true
+    fi
+
+    # Remove wireproxy binary and leftover files
     rm -f "${WIREPROXY_BIN}"
-    rm -f "${WIREPROXY_CONF}"
-    rm -f /usr/local/bin/wgcf
+    rm -f /etc/systemd/system/wireproxy.service
     rm -f /usr/bin/warp
     rm -rf /etc/wireguard
     rm -rf "${WARP_CONFIG}"
     rm -f "${CONFIG_DIR}/modules/warp_installed"
+    systemctl daemon-reload 2>/dev/null
 
-    msg_ok "WARP removed (wireproxy + config)"
+    msg_ok "WARP removed (wireproxy + warp + config)"
 }
 
 # --- Check WARP status ---
