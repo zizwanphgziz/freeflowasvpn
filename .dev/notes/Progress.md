@@ -338,6 +338,9 @@ Rewrite `install_warp.sh` to use **Xray native WireGuard outbound** via `wgcf`:
 | 2026-05-20 | v2.5.2: PR #25 — Direct Cloudflare API + wireproxy (domain bypass didn't work) |
 | 2026-05-21 | v2.5.3: PR #26 — gh98 WARP installer + pre-install wireproxy (WORKS but detection timing issue) |
 | 2026-05-21 | v2.5.4: PR #27 — Fix wireproxy detection: remove pre-install, retry loop |
+| 2026-05-21 | v2.5.4: TESTED — gh98 automated `warp w` piped input FAILS, manual `warp w` WORKS |
+| 2026-05-21 | v2.5.4: Bug 1: piped input to `warp w` doesn't match current fscarmen/warp prompts |
+| 2026-05-21 | v2.5.4: Bug 2: marker file never created because install_warp() returns early on gh98 failure |
 
 ## Phase 19: v2.4.x — WARP Bug Fixes — DONE
 - [x] PR #16: Registration retry logic (wgcf API 500 errors)
@@ -366,7 +369,68 @@ Xray → socks5://127.0.0.1:40000 → WireProxy → Cloudflare WARP
 4. v2.5.3 (PR #26): gh98 script + pre-install wireproxy — WORKS but timing issue
 5. v2.5.4 (PR #27): Fix: remove pre-install, better detection retry — PENDING
 
-### Current Issue (v2.5.3)
-Pre-installed wireproxy binary causes gh98 to see WP_STATUS=1 (installed but not running),
-triggering reinstall path (warp u → warp w). After gh98, sleep 2 not enough for detection.
-User has to manually run `warp w` again for WARP to show as ON.
+### Current Issue (v2.5.4 — tested 2026-05-21)
+Even after removing wireproxy pre-install, the automated gh98 flow STILL fails:
+1. gh98 script runs with `-yf` → calls `warp w` with piped input `<<< $'1\n1\n40000\n1\n'`
+2. wireproxy download from GitHub succeeds (3.88M from release-assets.githubusercontent.com)
+3. BUT wireproxy fails to fully install/start during the automated flow
+4. Menu shows WARP STATUS: OFF after gh98 completes
+5. User manually runs `warp w` from terminal → wireproxy installs successfully
+6. "Congratulations! Wireproxy is working" — Local Socks5: 127.0.0.1:40000
+7. But even after manual `warp w`, the freeflow menu STILL shows WARP STATUS: OFF
+
+### Two Distinct Bugs to Fix
+
+**Bug 1: wireproxy fails to install during automated gh98 flow**
+- The `warp w <<< $'1\n1\n40000\n1\n'` piped input from gh98 doesn't work correctly
+- Manual interactive `warp w` works fine — user successfully installs wireproxy manually
+- The fscarmen/warp script's interactive prompts may have changed
+  (different number/order of prompts than gh98 expects)
+- Need to investigate: what prompts does `warp w` actually show?
+  Is the piped input `1\n1\n40000\n1\n` still correct for latest fscarmen/warp?
+
+**Bug 2: WARP status shows OFF even after successful manual `warp w`**
+- wireproxy IS running (confirmed: "Congratulations! Wireproxy is working")
+- But `check_warp_status()` returns "not_installed" — menu shows OFF
+- Root cause: `install_warp()` in our script returned early (gh98 failed)
+  → marker file `warp_installed` was NEVER created
+  → `check_warp_status()` checks marker file first → returns "not_installed"
+- The manual `warp w` successfully starts wireproxy, but our marker file is never set
+  because `install_warp()` already failed and returned
+
+**Potential Fix Approaches (for next session):**
+
+Option A: After gh98 script completes (even with failure), check if wireproxy is running
+and create the marker file anyway. Don't rely on the entire `install_warp()` pipeline
+succeeding — separate "detection" from "installation".
+
+Option B: Run `warp w` directly instead of through gh98 script. The gh98 script is just
+a wrapper that downloads fscarmen/warp and runs `warp w`. If we download fscarmen/warp
+ourselves and run `warp w` interactively (with correct piped input), we skip gh98 overhead.
+
+Option C: Instead of piped input, use `expect` or a pseudo-terminal to interact with
+`warp w` — the interactive prompts may need a real TTY.
+
+Option D: Fall back to direct wireproxy setup (download wireproxy from GitHub + use
+warp-go from zeroteam API for WireGuard config + create wireproxy.conf manually).
+This is the JinGGo approach without any fscarmen/warp dependency.
+
+### Key Evidence from v2.5.4 Test (Screenshots)
+1. Screenshot 1: gh98 runs, "The WARP socks5 proxy isn't installed yet", starts installing
+2. Screenshot 2: WARP MENU shows WARP STATUS: OFF (after gh98 failed internally)
+3. Screenshot 3: User exits menu, manually runs `warp w`, sees fscarmen/warp prompt
+4. Screenshot 4: `warp w` downloads wireproxy from GitHub (3.88M, 85.2 MB/s) — SUCCESS
+5. Screenshot 5: "Congratulations! Wireproxy is working", Local Socks5: 127.0.0.1:40000,
+   WARP Free, IPv4: 104.28.254.46 SG AS13335 Cloudflare
+
+### What Works vs What Doesn't
+| Component | Status |
+|-----------|--------|
+| v2.5.4 update mechanism | WORKS — "FREEFLOW v2.5.4" shown correctly |
+| gh98 script download | WORKS — script downloads and runs |
+| fscarmen/warp command creation | WORKS — `warp` command available |
+| wireproxy download from GitHub | WORKS — 3.88M downloaded successfully |
+| Automated `warp w` via piped input | FAILS — wireproxy not installed/running after |
+| Manual interactive `warp w` | WORKS — wireproxy installs and runs |
+| WARP status detection after manual fix | FAILS — marker file never created |
+| Xray SOCKS5 outbound config | UNKNOWN — never reached due to gh98 failure |
