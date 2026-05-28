@@ -1,12 +1,13 @@
 export const vpnCategories = [
   // ─────────────────────────────────────────────
-  // SkyNode – added first as a featured installer
+  // VPN Autoscript Installers – community AIO bundles
+  // (Ported from freeflowonelinerrebuildvps repo)
   // ─────────────────────────────────────────────
   {
-    id: "skynode",
-    name: "SkyNode (NevermoreSSH)",
+    id: "autoscript",
+    name: "VPN Autoscript Installers",
     icon: "🌐",
-    color: "#00C8FF",
+    color: "#8B5CF6",
     tools: [
       {
         id: "skynode-autoscript",
@@ -21,6 +22,275 @@ export const vpnCategories = [
           "License key: MNVR7X-M1M3AF-WWV7DT-RJKFQ7-R5V7XE-JWYPO7\nPorts: SSH 22/2222, Dropbear 143/109, WS-HTTP 80/8880, WS-HTTPS 443, VMESS/VLESS 443.\nTested on: AWS, DigitalOcean, Vultr, GBcloud.",
         script:
           "apt update -y && apt upgrade -y && apt dist-upgrade -y && apt install -y screen wget curl && wget https://raw.githubusercontent.com/NevermoreSSH/SkyNode/main/install/setup.sh && chmod +x setup.sh && sed -i -e 's/\\r$//' setup.sh && screen -S setup ./setup.sh",
+      },
+      {
+        id: "vpn-install-dotycat",
+        name: "Dotycat Tunnel",
+        icon: "🐱",
+        description:
+          "VLESS/VMess/Trojan WS/gRPC/xHTTP + SSH WS + OpenVPN. Active 2026, 28 stars.",
+        supportedOS: "Fresh VPS only",
+        notes:
+          "Only run on a FRESH VPS. If you already have another autoscript installed, rebuild your VPS first.",
+        script:
+          "apt update && apt upgrade -y && apt install -y git wget curl unzip && wget -O /root/install.sh https://raw.githubusercontent.com/dotywrt/doty/main/install.sh && chmod +x /root/install.sh && /root/install.sh",
+      },
+      {
+        id: "vpn-install-vinstech-lite",
+        name: "Vinstech Lite",
+        icon: "⚡",
+        description:
+          "VMess/VLess/Trojan WS & gRPC. Popular in MY. 30 stars.",
+        supportedOS: "Fresh VPS only",
+        notes:
+          "Only run on a FRESH VPS. Requires domain pointed to VPS IP.",
+        script:
+          "sysctl -w net.ipv6.conf.all.disable_ipv6=1 && sysctl -w net.ipv6.conf.default.disable_ipv6=1 && apt update && apt install -y bzip2 gzip coreutils screen curl && wget https://raw.githubusercontent.com/vinstechmy/AutoscriptWebsocketLite/main/V1/setup-lite.sh && chmod +x setup-lite.sh && screen -S vinstech ./setup-lite.sh",
+      },
+      {
+        id: "vpn-install-vinstech-minix",
+        name: "Vinstech MiniXLite",
+        icon: "⚡",
+        description:
+          "VLess/Trojan WS + TCP XTLS. Trial accounts, Telegram backup. 16 stars.",
+        supportedOS: "Fresh VPS only",
+        notes:
+          "Only run on a FRESH VPS. Requires domain pointed to VPS IP.",
+        script:
+          "sysctl -w net.ipv6.conf.all.disable_ipv6=1 && sysctl -w net.ipv6.conf.default.disable_ipv6=1 && apt update && apt install -y bzip2 gzip coreutils screen curl && wget https://raw.githubusercontent.com/vinstechmy/MiniXLiteAutoscript/main/V1/setup.sh && chmod +x setup.sh && screen -S vinstech ./setup.sh",
+      },
+      {
+        id: "vpn-install-vinstech-multi",
+        name: "Vinstech Multiport",
+        icon: "⚡",
+        description:
+          "SSH WS + VMess/VLess/Trojan WS multiport. 8 stars.",
+        supportedOS: "Fresh VPS only",
+        notes:
+          "Only run on a FRESH VPS. Requires domain pointed to VPS IP.",
+        script:
+          "sysctl -w net.ipv6.conf.all.disable_ipv6=1 && sysctl -w net.ipv6.conf.default.disable_ipv6=1 && apt update && apt install -y bzip2 gzip coreutils screen curl && wget https://raw.githubusercontent.com/vinstechmy/SSH-XRAY-Websocket-Multiport/main/setup.sh && chmod +x setup.sh && screen -S vinstech ./setup.sh",
+      },
+      {
+        id: "vpn-install-decode",
+        name: "Decode Reality",
+        icon: "🔍",
+        description:
+          "VLess-only (Reality). TLS/gRPC/HttpUpgrade/xHTTP. Clean & focused. New 2026.",
+        supportedOS: "Fresh VPS only",
+        notes:
+          "Only run on a FRESH VPS. VLess protocol only.",
+        script:
+          "wget -q https://raw.githubusercontent.com/DecodeXOfficial/Reality/main/setup.sh -O setup.sh && chmod +x setup.sh && screen -S decode ./setup.sh",
+      },
+      {
+        id: "vpn-install-rerechan",
+        name: "FN Project (Rerechan)",
+        icon: "🌍",
+        description:
+          "VMess/VLess/Trojan + NoobzVPN + SlowDNS + UDP Custom. ALL OS support. 23 stars.",
+        supportedOS: "ALL Linux distros",
+        notes:
+          "Only run on a FRESH VPS. Supports ALL Linux distros.",
+        script:
+          "apt update && apt install wget curl screen gnupg openssl perl binutils -y && wget -O install.sh \"https://codeberg.org/Rerechan02/scvps-stable/raw/branch/main/install.sh\" && chmod +x install.sh && screen -S fn ./install.sh",
+      },
+      {
+        id: "vpn-install-darqan",
+        name: "DarQan Script",
+        icon: "📜",
+        description:
+          "SSH WS + VLess WS only. IP limit, data limit, user recovery. Debian 11/12.",
+        recommendedOS: "⭐ Debian 11 / 12",
+        supportedOS: "Debian 11 / 12 (fresh)",
+        notes:
+          "Only run on a FRESH VPS (Debian 11/12). Run `apt full-upgrade -y && reboot` first.",
+        script:
+          "apt update ; apt install wget curl openssl perl screen -y ; wget -q https://raw.githubusercontent.com/darul-itqan/Auto-Script-VPS-SSH-WS-VLESS-WS/main/install.sh ; chmod +x install.sh ; screen -S rere ./install.sh",
+      },
+      {
+        id: "vpn-install-gegevps",
+        name: "GegeVPS",
+        icon: "🖥️",
+        description:
+          "SSH/OpenVPN/Xray/WireGuard + SlowDNS + UDP Custom. Cloudflare auto-DNS. 54 stars.",
+        supportedOS: "Fresh VPS + Cloudflare domain",
+        notes:
+          "Only run on a FRESH VPS. Requires Cloudflare domain.",
+        script:
+          "apt update && apt install -y wget curl screen && wget https://raw.githubusercontent.com/GegeDevs/sshvpn-script/main/setup.sh && chmod +x setup.sh && screen -S gege ./setup.sh",
+      },
+      {
+        id: "vpn-install-kingkong",
+        name: "KingKongVPN",
+        icon: "🦍",
+        description:
+          "SSH/OpenVPN/Stunnel/Xray Multiport/WireGuard. Webmin panel. 163 stars.",
+        recommendedOS: "⭐ Debian 10 / Ubuntu 18-20",
+        supportedOS: "Debian 10 / Ubuntu 18-20 (fresh)",
+        notes: "Only run on a FRESH VPS (Debian 10/Ubuntu 18-20).",
+        script:
+          "wget https://raw.githubusercontent.com/xiihaiqal/AutoScriptVPS/master/AutoScript && bash AutoScript",
+      },
+      {
+        id: "vpn-install-netzxray",
+        name: "Netz-Xray (110 Contributors)",
+        icon: "👥",
+        description:
+          "Xray only: VMess/VLess/Trojan/SS WS & gRPC. Dynamic path. 142 stars.",
+        recommendedOS: "⭐ Debian 10 / Ubuntu 20",
+        supportedOS: "Debian 10 / Ubuntu 20 (fresh)",
+        notes: "Only run on a FRESH VPS (Debian 10/Ubuntu 20).",
+        script:
+          "wget -q https://raw.githubusercontent.com/adisubagja/AutoScriptXray/master/adi.sh && chmod +x adi.sh && screen -S netzinstall ./adi.sh",
+      },
+      {
+        id: "vpn-install-givpn",
+        name: "GIVPN",
+        icon: "🔒",
+        description:
+          "VMess/VLess/Trojan/SS WS & gRPC + SSH WS + OpenVPN. 49 stars.",
+        supportedOS: "Fresh VPS only",
+        notes: "Only run on a FRESH VPS.",
+        script:
+          "apt update && apt install -y bzip2 gzip coreutils screen curl unzip && wget https://raw.githubusercontent.com/givpn/AutoScriptXray/master/setup.sh && chmod +x setup.sh && screen -S givpn ./setup.sh",
+      },
+      {
+        id: "vpn-install-farelvpn",
+        name: "FarellVPN (Modern)",
+        icon: "💻",
+        description:
+          "VMess/VLess/Trojan + Web API + Telegram bot + Quota management. Python+Go.",
+        supportedOS: "Fresh VPS only",
+        notes:
+          "Only run on a FRESH VPS. Has REST API for remote management.",
+        script:
+          "apt update && apt install -y wget curl screen && wget https://raw.githubusercontent.com/farelvpn/autoscript/main/setup.sh && chmod +x setup.sh && screen -S farel ./setup.sh",
+      },
+      {
+        id: "vpn-install-mantap",
+        name: "SL Mantap AIO",
+        icon: "💪",
+        description:
+          "SSH/OHP/Stunnel5/OpenVPN/Xray/SS/SSR/WireGuard/Trojan-Go. 209 stars.",
+        recommendedOS: "⭐ Debian 9-10 / Ubuntu 18-20",
+        supportedOS: "Debian 9-10 / Ubuntu 18-20 (fresh)",
+        notes:
+          "Only run on a FRESH VPS (Debian 9-10/Ubuntu 18-20).",
+        script:
+          "wget https://raw.githubusercontent.com/fisabiliyusri/Mantap/main/setup.sh && chmod +x setup.sh && ./setup.sh",
+      },
+      {
+        id: "vpn-install-praiman",
+        name: "PR Aiman AIO (13+ Protocols)",
+        icon: "🏆",
+        description:
+          "SSH/OpenVPN/Xray/Trojan/SS/SSR/WireGuard/SSTP/L2TP/PPTP. Most protocols.",
+        recommendedOS: "⭐ Debian 9-10",
+        supportedOS: "Debian 9-10 (fresh)",
+        notes: "Only run on a FRESH VPS (Debian 9-10).",
+        script:
+          "apt install -y bzip2 gzip coreutils curl && wget https://raw.githubusercontent.com/praiman99/AutoScriptVPN-AIO/Beginner/setup.sh && chmod +x setup.sh && ./setup.sh",
+      },
+      {
+        id: "vpn-install-scvps",
+        name: "SCVPS AIO",
+        icon: "🖥️",
+        description:
+          "SSH/Xray/WireGuard/Trojan-Go/SSR/L2TP. Theme menu, admin panel. 92 stars.",
+        recommendedOS: "⭐ Debian 10 / Ubuntu 18-20",
+        supportedOS: "Debian 10 / Ubuntu 18-20 (fresh)",
+        notes:
+          "Only run on a FRESH VPS (Debian 10/Ubuntu 18-20).",
+        script:
+          "apt update && apt upgrade -y && apt install -y wget screen && wget -q https://raw.githubusercontent.com/scvps/scriptvps/main/setup.sh && chmod +x setup.sh && screen -S setup ./setup.sh",
+      },
+      {
+        id: "vpn-install-caliph",
+        name: "Caliph Dev",
+        icon: "🏰",
+        description:
+          "Xray (VMess/VLess/Trojan/SS) WS & gRPC + SSH WS. No IP registration. 7 stars.",
+        recommendedOS: "⭐ Debian 11-12 / Ubuntu 20-22",
+        supportedOS: "Debian 11-12 / Ubuntu 20-22 (fresh)",
+        notes:
+          "Only run on a FRESH VPS (Debian 11-12/Ubuntu 20-22).",
+        script:
+          "apt update && apt install -y wget curl screen && wget https://raw.githubusercontent.com/cabrata/autoscript/master/setup.sh && chmod +x setup.sh && screen -S caliph ./setup.sh",
+      },
+      {
+        id: "vpn-install-233boy",
+        name: "233boy Xray (2.2K Stars)",
+        icon: "⭐",
+        description:
+          "VLESS Reality/VMess/Trojan/SS2022. Best CLI manager. Chinese community.",
+        supportedOS: "Works on existing VPS",
+        notes:
+          "Works on existing VPS. Manage via `xray` command after install.",
+        script:
+          "bash <(wget -qO- https://raw.githubusercontent.com/233boy/Xray/main/install.sh)",
+      },
+      {
+        id: "vpn-install-jinwyp",
+        name: "One Click Script (5.1K Stars)",
+        icon: "🌟",
+        description:
+          "V2Ray/Xray/Trojan-Go/WireGuard/SS + BBR kernel. Most starred. Chinese community.",
+        supportedOS: "Works on existing VPS",
+        notes:
+          "Interactive menu. Works on existing VPS but may conflict with other scripts.",
+        script:
+          "wget -O setup.sh https://raw.githubusercontent.com/jinwyp/one_click_script/master/install_v2ray.sh && bash setup.sh",
+      },
+      {
+        id: "vpn-install-afandiazmi",
+        name: "afandiazmi 8-in-1",
+        icon: "📦",
+        description:
+          "VLESS/VMess/Trojan 8 combo (TCP/WS/gRPC + TLS/XTLS). Xray & V2Ray core. 39 stars.",
+        supportedOS: "Fresh VPS only",
+        notes: "Only run on a FRESH VPS.",
+        script:
+          "apt update && apt install -y wget curl screen && wget https://raw.githubusercontent.com/afandiazmi/v2RayVPN/main/setup.sh && chmod +x setup.sh && screen -S afandi ./setup.sh",
+      },
+      {
+        id: "vpn-install-senovpn",
+        name: "SenoVPN",
+        icon: "🖥️",
+        description:
+          "SSH/OHP/OpenVPN/Stunnel5/Xray/SSR/WireGuard/Trojan-Go/SSTP/L2TP/PPTP. 61 stars.",
+        recommendedOS: "⭐ Debian 10 / Ubuntu 18-20",
+        supportedOS: "Debian 10 / Ubuntu 18-20 (fresh)",
+        notes:
+          "Only run on a FRESH VPS (Debian 10/Ubuntu 18-20).",
+        script:
+          "rm -f setup.sh && sysctl -w net.ipv6.conf.all.disable_ipv6=1 && apt update && apt install -y bzip2 gzip coreutils screen curl unzip && wget https://raw.githubusercontent.com/senowahyu62/scriptvps/main/setup.sh && chmod +x setup.sh && ./setup.sh",
+      },
+      {
+        id: "vpn-install-rascom",
+        name: "RasCom AIO",
+        icon: "📡",
+        description:
+          "SSH/OpenVPN/V2Ray/Trojan/Trojan-Go/SS/SSR/WireGuard/SSTP/L2TP/PPTP. Telegram bot. 13 stars.",
+        recommendedOS: "⭐ Debian 9-10 / Ubuntu 18-20",
+        supportedOS: "Debian 9-10 / Ubuntu 18-20 (fresh)",
+        notes:
+          "Only run on a FRESH VPS (Debian 9-10/Ubuntu 18-20).",
+        script:
+          "apt update && apt install -y wget curl screen && wget https://raw.githubusercontent.com/myskynblack/aioscvps/main/setup.sh && chmod +x setup.sh && screen -S rascom ./setup.sh",
+      },
+      {
+        id: "vpn-install-givps-tor",
+        name: "GIVPS + Tor",
+        icon: "🕵️",
+        description:
+          "Xray/SSH WS/Stunnel/OpenVPN + Tor integration for anonymity. 16 stars.",
+        recommendedOS: "⭐ Debian 11-12 / Ubuntu 18-22",
+        supportedOS: "Debian 11-12 / Ubuntu 18-22 (fresh)",
+        notes:
+          "Only run on a FRESH VPS (Debian 11-12/Ubuntu 18-22).",
+        script:
+          "apt update && apt install -y bzip2 gzip coreutils screen curl unzip && wget https://raw.githubusercontent.com/givps/AutoScriptXray/master/setup.sh && chmod +x setup.sh && screen -S setup ./setup.sh",
       },
     ],
   },
