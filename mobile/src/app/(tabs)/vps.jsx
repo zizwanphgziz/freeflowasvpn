@@ -38,6 +38,9 @@ const PROVIDERS = [
   "Other",
 ];
 
+const BACKEND_SETUP_SCRIPT =
+  "curl -fsSL https://raw.githubusercontent.com/zizwanphgziz/freeflowonelinerrebuildvps/devin/initial-setup/setup.sh | bash";
+
 export default function VpsScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -70,6 +73,7 @@ export default function VpsScreen() {
   const [importText, setImportText] = useState("");
   const [editingId, setEditingId] = useState(null);
   const [copiedSSH, setCopiedSSH] = useState(null);
+  const [copiedSetup, setCopiedSetup] = useState(false);
   const [expandedId, setExpandedId] = useState(null);
 
   // Form state
@@ -200,6 +204,13 @@ export default function VpsScreen() {
     await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     setCopiedSSH(id);
     setTimeout(() => setCopiedSSH(null), 2000);
+  };
+
+  const handleCopySetupScript = async () => {
+    await Clipboard.setStringAsync(BACKEND_SETUP_SCRIPT);
+    await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    setCopiedSetup(true);
+    setTimeout(() => setCopiedSetup(false), 2000);
   };
 
   // ── Export ──
@@ -1177,12 +1188,37 @@ export default function VpsScreen() {
                     fontSize: 10,
                     lineHeight: 14,
                   }}
+                  selectable
                 >
-                  curl -fsSL
-                  https://raw.githubusercontent.com/zizwanphgziz/freeflowonelinerrebuildvps/devin/initial-setup/setup.sh
-                  | bash
+                  {BACKEND_SETUP_SCRIPT}
                 </Text>
               </View>
+              <TouchableOpacity
+                onPress={handleCopySetupScript}
+                style={{
+                  marginTop: 10,
+                  backgroundColor: copiedSetup ? GREEN : CYAN,
+                  borderRadius: 10,
+                  paddingVertical: 12,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 8,
+                }}
+              >
+                <Text style={{ fontSize: 15 }}>
+                  {copiedSetup ? "✅" : "📋"}
+                </Text>
+                <Text
+                  style={{
+                    color: "#000F1A",
+                    fontWeight: "800",
+                    fontSize: 14,
+                  }}
+                >
+                  {copiedSetup ? "Copied!" : "Copy Setup Command"}
+                </Text>
+              </TouchableOpacity>
               <Text
                 style={{
                   color: MUTED,
