@@ -3,7 +3,7 @@
     "name": "Freeflow",
     "slug": "freeflow",
     "scheme": "freeflow",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "userInterfaceStyle": "automatic",
@@ -28,7 +28,7 @@
         "android.permission.MODIFY_AUDIO_SETTINGS"
       ],
       "package": "com.freeflow.app",
-      "versionCode": 1
+      "versionCode": 2
     },
     "plugins": [
       [
@@ -68,7 +68,14 @@
       ],
       "expo-font",
       "expo-secure-store",
-      "expo-web-browser"
+      "expo-web-browser",
+      [
+        "react-native-google-mobile-ads",
+        {
+          "androidAppId": "ca-app-pub-3940256099942544~3347511713",
+          "iosAppId": "ca-app-pub-3940256099942544~1458002511"
+        }
+      ]
     ],
     "web": {
       "bundler": "metro",
