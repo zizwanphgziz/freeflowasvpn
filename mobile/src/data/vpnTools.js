@@ -29,9 +29,10 @@ export const vpnCategories = [
         icon: "🐱",
         description:
           "VLESS/VMess/Trojan WS/gRPC/xHTTP + SSH WS + OpenVPN. Active 2026, 28 stars.",
-        supportedOS: "Fresh VPS only",
+        recommendedOS: "⭐ Debian 10 / 11 (Recommended)",
+        supportedOS: "Debian 10 / 11 · Ubuntu 20 / 22",
         notes:
-          "Only run on a FRESH VPS. If you already have another autoscript installed, rebuild your VPS first.",
+          "Run on a FRESH VPS. Author confirms all services working on Debian 10/11 and Ubuntu 20/22.",
         script:
           "apt update && apt upgrade -y && apt install -y git wget curl unzip && wget -O /root/install.sh https://raw.githubusercontent.com/dotywrt/doty/main/install.sh && chmod +x /root/install.sh && /root/install.sh",
       },
@@ -41,9 +42,10 @@ export const vpnCategories = [
         icon: "⚡",
         description:
           "VMess/VLess/Trojan WS & gRPC. Popular in MY. 30 stars.",
-        supportedOS: "Fresh VPS only",
+        recommendedOS: "⭐ Debian 10 (Buster)",
+        supportedOS: "Debian 10 · Ubuntu 18.04 LTS",
         notes:
-          "Only run on a FRESH VPS. Requires domain pointed to VPS IP.",
+          "Run on a FRESH VPS. Requires domain pointed to VPS IP. First-time install only on Debian 10 / Ubuntu 18.04 (update repo).",
         script:
           "sysctl -w net.ipv6.conf.all.disable_ipv6=1 && sysctl -w net.ipv6.conf.default.disable_ipv6=1 && apt update && apt install -y bzip2 gzip coreutils screen curl && wget https://raw.githubusercontent.com/vinstechmy/AutoscriptWebsocketLite/main/V1/setup-lite.sh && chmod +x setup-lite.sh && screen -S vinstech ./setup-lite.sh",
       },
@@ -53,9 +55,10 @@ export const vpnCategories = [
         icon: "⚡",
         description:
           "VLess/Trojan WS + TCP XTLS. Trial accounts, Telegram backup. 16 stars.",
-        supportedOS: "Fresh VPS only",
+        recommendedOS: "⭐ Debian 10 (Buster)",
+        supportedOS: "Debian 10 · Ubuntu 18.04 LTS",
         notes:
-          "Only run on a FRESH VPS. Requires domain pointed to VPS IP.",
+          "Run on a FRESH VPS. Requires domain pointed to VPS IP. First-time install only on Debian 10 / Ubuntu 18.04 (update repo).",
         script:
           "sysctl -w net.ipv6.conf.all.disable_ipv6=1 && sysctl -w net.ipv6.conf.default.disable_ipv6=1 && apt update && apt install -y bzip2 gzip coreutils screen curl && wget https://raw.githubusercontent.com/vinstechmy/MiniXLiteAutoscript/main/V1/setup.sh && chmod +x setup.sh && screen -S vinstech ./setup.sh",
       },
@@ -65,9 +68,10 @@ export const vpnCategories = [
         icon: "⚡",
         description:
           "SSH WS + VMess/VLess/Trojan WS multiport. 8 stars.",
-        supportedOS: "Fresh VPS only",
+        recommendedOS: "⭐ Debian 10 (Buster)",
+        supportedOS: "Debian 10 only",
         notes:
-          "Only run on a FRESH VPS. Requires domain pointed to VPS IP.",
+          "Run on a FRESH VPS. Requires domain pointed to VPS IP. Author supports Debian 10 only.",
         script:
           "sysctl -w net.ipv6.conf.all.disable_ipv6=1 && sysctl -w net.ipv6.conf.default.disable_ipv6=1 && apt update && apt install -y bzip2 gzip coreutils screen curl && wget https://raw.githubusercontent.com/vinstechmy/SSH-XRAY-Websocket-Multiport/main/setup.sh && chmod +x setup.sh && screen -S vinstech ./setup.sh",
       },
@@ -77,9 +81,10 @@ export const vpnCategories = [
         icon: "🔍",
         description:
           "VLess-only (Reality). TLS/gRPC/HttpUpgrade/xHTTP. Clean & focused. New 2026.",
-        supportedOS: "Fresh VPS only",
+        recommendedOS: "⭐ Debian 12 / 13 · Ubuntu 24.04 LTS",
+        supportedOS: "Debian 11 / 12 / 13 · Ubuntu 22.04 / 24.04 / 25.04",
         notes:
-          "Only run on a FRESH VPS. VLess protocol only.",
+          "Run on a FRESH VPS. VLess (Reality) protocol only. Supports the newest Debian & Ubuntu releases.",
         script:
           "wget -q https://raw.githubusercontent.com/DecodeXOfficial/Reality/main/setup.sh -O setup.sh && chmod +x setup.sh && screen -S decode ./setup.sh",
       },
@@ -114,9 +119,10 @@ export const vpnCategories = [
         icon: "🖥️",
         description:
           "SSH/OpenVPN/Xray/WireGuard + SlowDNS + UDP Custom. Cloudflare auto-DNS. 54 stars.",
-        supportedOS: "Fresh VPS + Cloudflare domain",
+        recommendedOS: "⭐ Debian 12 (Bookworm) · 64-bit",
+        supportedOS: "Debian 10 / 11 / 12 (64-bit only)",
         notes:
-          "Only run on a FRESH VPS. Requires Cloudflare domain.",
+          "Run on a FRESH VPS. Requires Cloudflare domain. Min Debian 11, recommended Debian 12. Tested on Debian 12.",
         script:
           "apt update && apt install -y wget curl screen && wget https://raw.githubusercontent.com/GegeDevs/sshvpn-script/main/setup.sh && chmod +x setup.sh && screen -S gege ./setup.sh",
       },
@@ -150,8 +156,10 @@ export const vpnCategories = [
         icon: "🔒",
         description:
           "VMess/VLess/Trojan/SS WS & gRPC + SSH WS + OpenVPN. 49 stars.",
-        supportedOS: "Fresh VPS only",
-        notes: "Only run on a FRESH VPS.",
+        recommendedOS: "⭐ Ubuntu 18 / 20 LTS (most stable)",
+        supportedOS: "Debian 9 / 10 · Ubuntu 18 / 20 LTS",
+        notes:
+          "Run on a FRESH VPS (never had anything installed). For Debian: update repo first. For Ubuntu: install directly.",
         script:
           "apt update && apt install -y bzip2 gzip coreutils screen curl unzip && wget https://raw.githubusercontent.com/givpn/AutoScriptXray/master/setup.sh && chmod +x setup.sh && screen -S givpn ./setup.sh",
       },
@@ -161,9 +169,10 @@ export const vpnCategories = [
         icon: "💻",
         description:
           "VMess/VLess/Trojan + Web API + Telegram bot + Quota management. Python+Go.",
-        supportedOS: "Fresh VPS only",
+        recommendedOS: "⭐ Debian 11 / 12 · Ubuntu 20 / 22 LTS",
+        supportedOS: "Debian 10+ · Ubuntu 18.04+",
         notes:
-          "Only run on a FRESH VPS. Has REST API for remote management.",
+          "Run on a FRESH VPS. Auto-installs Nginx, Certbot SSL, Python3, Xray. Will prompt for domain during install. Has REST API for remote management.",
         script:
           "apt update && apt install -y wget curl screen && wget https://raw.githubusercontent.com/farelvpn/autoscript/main/setup.sh && chmod +x setup.sh && screen -S farel ./setup.sh",
       },
@@ -248,8 +257,10 @@ export const vpnCategories = [
         icon: "📦",
         description:
           "VLESS/VMess/Trojan 8 combo (TCP/WS/gRPC + TLS/XTLS). Xray & V2Ray core. 39 stars.",
-        supportedOS: "Fresh VPS only",
-        notes: "Only run on a FRESH VPS.",
+        recommendedOS: "⭐ Debian 10 / 11 · Ubuntu 20.04 LTS",
+        supportedOS: "Debian · Ubuntu · CentOS (all mainstream CPU arch)",
+        notes:
+          "Run on a FRESH VPS. Supports IPv6 offload, BBR, WARP, multi-user, quota & Netflix unblock.",
         script:
           "apt update && apt install -y wget curl screen && wget https://raw.githubusercontent.com/afandiazmi/v2RayVPN/main/setup.sh && chmod +x setup.sh && screen -S afandi ./setup.sh",
       },

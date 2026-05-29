@@ -38,8 +38,18 @@ const PROVIDERS = [
   "Other",
 ];
 
+// One-liner that mirrors BACKEND_SETUP.md on the zizwanphgziz/freeflowonelinerrebuildvps repo.
+// Installs deps, clones the repo, sets up the Python venv, copies the systemd service,
+// and starts the backend listening on port 8000.
 const BACKEND_SETUP_SCRIPT =
-  "curl -fsSL https://raw.githubusercontent.com/zizwanphgziz/freeflowonelinerrebuildvps/devin/initial-setup/setup.sh | bash";
+  "apt update && apt install -y git python3-venv lsof && " +
+  "git clone https://github.com/zizwanphgziz/freeflowonelinerrebuildvps.git /root/freeflowonelinerrebuildvps && " +
+  "cd /root/freeflowonelinerrebuildvps/backend && " +
+  "python3 -m venv venv && " +
+  "./venv/bin/pip install fastapi asyncssh uvicorn websockets && " +
+  "cp freeflow.service /etc/systemd/system/ && " +
+  "systemctl daemon-reload && " +
+  "systemctl enable --now freeflow";
 
 export default function VpsScreen() {
   const insets = useSafeAreaInsets();
@@ -315,79 +325,80 @@ export default function VpsScreen() {
           style={{ width: 180, height: 52, marginBottom: 8 }}
           contentFit="contain"
         />
-        <View
+        <Text
           style={{
-            flexDirection: "row",
-            alignItems: "center",
-            justifyContent: "space-between",
+            color: MUTED,
+            fontSize: 13,
+            marginBottom: 10,
           }}
         >
-          <Text style={{ color: MUTED, fontSize: 13 }}>My VPS Servers</Text>
-          <View style={{ flexDirection: "row", gap: 8 }}>
-            <TouchableOpacity
-              onPress={() => setBackendSettingsVisible(true)}
-              style={{
-                backgroundColor: CARD,
-                borderRadius: 8,
-                paddingHorizontal: 10,
-                paddingVertical: 7,
-                borderWidth: 1,
-                borderColor: BORDER,
-              }}
+          My VPS Servers
+        </Text>
+        <View style={{ flexDirection: "row", gap: 8 }}>
+          <TouchableOpacity
+            onPress={() => setBackendSettingsVisible(true)}
+            style={{
+              flex: 1,
+              backgroundColor: CARD,
+              borderRadius: 8,
+              paddingVertical: 9,
+              borderWidth: 1,
+              borderColor: BORDER,
+              alignItems: "center",
+            }}
+          >
+            <Text style={{ color: TEXT, fontSize: 12, fontWeight: "700" }}>
+              ⚙️ Backend
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => setImportModalVisible(true)}
+            style={{
+              flex: 1,
+              backgroundColor: CARD,
+              borderRadius: 8,
+              paddingVertical: 9,
+              borderWidth: 1,
+              borderColor: BORDER,
+              alignItems: "center",
+            }}
+          >
+            <Text style={{ color: TEXT, fontSize: 12, fontWeight: "700" }}>
+              📥 Import
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={handleExport}
+            style={{
+              flex: 1,
+              backgroundColor: CARD,
+              borderRadius: 8,
+              paddingVertical: 9,
+              borderWidth: 1,
+              borderColor: BORDER,
+              alignItems: "center",
+            }}
+          >
+            <Text style={{ color: TEXT, fontSize: 12, fontWeight: "700" }}>
+              📤 Export
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={openAddModal}
+            style={{
+              flex: 1.1,
+              backgroundColor: CYAN,
+              borderRadius: 8,
+              paddingVertical: 9,
+              alignItems: "center",
+            }}
+          >
+            <Text
+              style={{ color: "#000F1A", fontWeight: "800", fontSize: 12 }}
             >
-              <Text style={{ color: TEXT, fontSize: 12, fontWeight: "700" }}>
-                ⚙️ Backend
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={() => setImportModalVisible(true)}
-              style={{
-                backgroundColor: CARD,
-                borderRadius: 8,
-                paddingHorizontal: 10,
-                paddingVertical: 7,
-                borderWidth: 1,
-                borderColor: BORDER,
-              }}
-            >
-              <Text style={{ color: TEXT, fontSize: 12, fontWeight: "700" }}>
-                📥 Import
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={handleExport}
-              style={{
-                backgroundColor: CARD,
-                borderRadius: 8,
-                paddingHorizontal: 10,
-                paddingVertical: 7,
-                borderWidth: 1,
-                borderColor: BORDER,
-              }}
-            >
-              <Text style={{ color: TEXT, fontSize: 12, fontWeight: "700" }}>
-                📤 Export
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={openAddModal}
-              style={{
-                backgroundColor: CYAN,
-                borderRadius: 8,
-                paddingHorizontal: 10,
-                paddingVertical: 7,
-                flexDirection: "row",
-                alignItems: "center",
-                gap: 4,
-              }}
-            >
-              <Text
-                style={{ color: "#000F1A", fontWeight: "800", fontSize: 12 }}
-              >
-                ➕ Add
-              </Text>
-            </TouchableOpacity>
-          </View>
+              ➕ Add VPS
+            </Text>
+          </TouchableOpacity>
         </View>
 
         {/* Stats */}
@@ -465,7 +476,7 @@ export default function VpsScreen() {
                 paddingHorizontal: 40,
               }}
             >
-              Tap "Add" to start tracking your servers, or "Import" to restore a
+              Tap "Add VPS" to add a server (IP, SSH user/password, port…), or "Import" to restore a
               backup
             </Text>
           </View>
