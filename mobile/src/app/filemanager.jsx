@@ -139,8 +139,8 @@ export default function FileManagerScreen() {
       websocket.send(
         JSON.stringify({
           host: srv.ip,
-          port: 22,
-          username: "root",
+          port: srv.sshPort || 22,
+          username: srv.sshUsername || "root",
           password: srv.passwordHint || "",
         }),
       );

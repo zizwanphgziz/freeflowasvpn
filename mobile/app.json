@@ -3,7 +3,7 @@
     "name": "Freeflow",
     "slug": "freeflow",
     "scheme": "freeflow",
-    "version": "1.0.4",
+    "version": "1.0.5",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "userInterfaceStyle": "automatic",
@@ -28,7 +28,7 @@
         "android.permission.MODIFY_AUDIO_SETTINGS"
       ],
       "package": "com.freeflow.app",
-      "versionCode": 5
+      "versionCode": 6
     },
     "plugins": [
       [

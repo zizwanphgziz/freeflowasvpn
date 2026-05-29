@@ -102,7 +102,8 @@ export default function TerminalScreen() {
       setSession(getSession(sid));
 
       const s = getSession(sid);
-      if (s && s.status === "disconnected") {
+      // Auto-connect if the session is in a state where the WS isn't live
+      if (s && (s.status === "disconnected" || s.status === "error")) {
         connectSSH(sid, server, url);
       }
     } catch (e) {
@@ -129,8 +130,8 @@ export default function TerminalScreen() {
       ws.send(
         JSON.stringify({
           host: server.ip,
-          port: 22,
-          username: "root",
+          port: server.sshPort || 22,
+          username: server.sshUsername || "root",
           password: server.passwordHint || "",
           privateKey: "",
         }),
@@ -524,6 +525,40 @@ export default function TerminalScreen() {
         >
           <Text style={{ color: CYAN, fontSize: 12, fontWeight: "800" }}>
             ⊞ {activeCount}
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          onPress={async () => {
+            if (!sessionId) return;
+            const raw = await AsyncStorage.getItem(STORAGE_KEY);
+            const all = raw ? JSON.parse(raw) : [];
+            const s = getSession(sessionId);
+            if (!s) return;
+            const server = all.find((x) => x.id === s.serverId);
+            if (!server) return;
+            const url = await AsyncStorage.getItem(BACKEND_URL_KEY);
+            if (!url) return;
+            // Close existing socket first
+            const existing = wsMap.get(sessionId);
+            if (existing) {
+              try { existing.close(); } catch (_) {}
+              wsMap.delete(sessionId);
+            }
+            updateSession(sessionId, { status: "disconnected" });
+            connectSSH(sessionId, server, url);
+          }}
+          style={{
+            backgroundColor: "#001530",
+            borderRadius: 8,
+            paddingHorizontal: 10,
+            paddingVertical: 6,
+            borderWidth: 1,
+            borderColor: CYAN,
+          }}
+        >
+          <Text style={{ color: CYAN, fontSize: 11, fontWeight: "700" }}>
+            ↻ Reconnect
           </Text>
         </TouchableOpacity>
 
